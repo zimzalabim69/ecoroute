@@ -1,0 +1,24 @@
+{
+  "short_name": "EcoRoute",
+  "name": "EcoRoute — EV Chargers & Carbon Tracker",
+  "description": "Hyperlocal EV charger finder, route planner, and carbon tracker.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192x192.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512x512.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512"
+    }
+  ],
+  "scope": "/",
+  "categories": ["navigation", "utilities"]
+}
