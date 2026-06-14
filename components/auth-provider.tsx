@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 const DEV_USER_KEY = "ecoroute_dev_user";
 
 function getDevUser(): User | null {
+  if (process.env.NODE_ENV !== "development") return null;
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(DEV_USER_KEY);
   if (!raw) return null;

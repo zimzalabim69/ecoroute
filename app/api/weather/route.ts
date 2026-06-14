@@ -40,9 +40,8 @@ export async function GET(req: NextRequest) {
     );
 
     if (!res.ok) {
-      const text = await res.text();
       return NextResponse.json(
-        { error: `NWS API error: ${res.status}`, details: text },
+        { error: "Weather service unavailable" },
         { status: res.status }
       );
     }

@@ -7,7 +7,21 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, userId, returnUrl } = await req.json();
+    const { email, userId, returnUrl } = (await req.json()) as {
+      email?: string;
+      userId?: string;
+      returnUrl?: string;
+    };
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: "Invalid email" }, { status: 400 });
+    }
+    if (!userId || typeof userId !== "string" || userId.length === 0) {
+      return NextResponse.json({ error: "Invalid userId" }, { status: 400 });
+    }
+    if (!returnUrl || !/^https?:\/\//.test(returnUrl)) {
+      return NextResponse.json({ error: "Invalid returnUrl" }, { status: 400 });
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",

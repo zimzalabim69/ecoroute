@@ -36,7 +36,15 @@ export async function POST(req: NextRequest) {
     const customerId = session.customer as string;
     const paymentIntentId = session.payment_intent as string;
 
-    if (userId && paymentIntentId) {
+    if (!userId) {
+      console.error("Stripe webhook: missing userId in session metadata");
+      return NextResponse.json(
+        { error: "Missing userId in metadata" },
+        { status: 400 }
+      );
+    }
+
+    if (paymentIntentId) {
       const { data: existing } = await supabase
         .from("subscriptions")
         .select("id")
