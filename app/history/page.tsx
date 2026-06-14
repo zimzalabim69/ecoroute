@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { TripHistory } from "@/types";
+import { SignInButton } from "@/components/sign-in-button";
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -46,12 +47,9 @@ export default async function HistoryPage() {
       {!user && (
         <div className="mt-12 text-center">
           <p className="text-[#a0a0a0]">Sign in to view your trip history.</p>
-          <Link
-            href="/map"
-            className="mt-4 inline-flex min-h-[48px] items-center justify-center rounded-xl bg-[#4CAF50] px-6 py-3 text-sm font-semibold text-[#121212] transition hover:bg-[#43a047]"
-          >
-            Go to Map
-          </Link>
+          <SignInButton className="mt-4 inline-flex min-h-[48px] items-center justify-center rounded-xl bg-[#4CAF50] px-6 py-3 text-sm font-semibold text-[#121212] transition hover:bg-[#43a047]">
+            Sign In
+          </SignInButton>
         </div>
       )}
 

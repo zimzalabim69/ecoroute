@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
-import { Navbar } from "@/components/navbar";
+import { AppShell } from "@/components/app-shell";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { InstallPrompt } from "@/components/install-prompt";
 
@@ -47,8 +47,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-[#121212] text-[#ededed]">
         <AuthProvider>
-          <Navbar />
-          <main className="flex-1">{children}</main>
+          <AppShell>{children}</AppShell>
         </AuthProvider>
         <ServiceWorkerRegister />
         <InstallPrompt />

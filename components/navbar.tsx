@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useAuth } from "@/components/auth-provider";
+import { useSignIn } from "@/components/sign-in-context";
 
 export function Navbar() {
   const { user, signOut } = useAuth();
+  const { openSignIn } = useSignIn();
 
   return (
     <nav className="sticky top-0 z-50 border-b border-[#2a2a2a] bg-[#121212]/90 backdrop-blur-md">
@@ -27,12 +29,12 @@ export function Navbar() {
               Sign Out
             </button>
           ) : (
-            <Link
-              href="/map"
+            <button
+              onClick={openSignIn}
               className="rounded-lg bg-[#4CAF50] px-3 py-2 text-sm font-medium text-[#121212] transition hover:bg-[#43a047]"
             >
-              Get Started
-            </Link>
+              Sign In
+            </button>
           )}
         </div>
       </div>

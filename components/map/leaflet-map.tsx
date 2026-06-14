@@ -15,6 +15,7 @@ import type { EVStation, SafeRouteResult, WeatherAlert } from "@/types";
 import { fetchStations } from "@/lib/ocm";
 import { fetchCrimeScore, getRiskColor } from "@/lib/crime";
 import { useAuth } from "@/components/auth-provider";
+import { useSignIn } from "@/components/sign-in-context";
 import { createClient } from "@/lib/supabase/client";
 import { SearchBar } from "./search-bar";
 import { CheckinModal } from "@/components/ui/checkin-modal";
@@ -608,6 +609,7 @@ function StationDetailContent({
   onBoost: () => void;
 }) {
   const [crime, setCrime] = useState<{ score: number; label: "Safe" | "Caution" | "Avoid" } | null>(null);
+  const { openSignIn } = useSignIn();
 
   useEffect(() => {
     let cancelled = false;
@@ -671,16 +673,25 @@ function StationDetailContent({
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2 pt-2">
-        <button
-          onClick={onToggleFavorite}
-          className={`inline-flex min-h-[40px] items-center gap-1 rounded-lg px-3 py-2 text-xs font-medium transition ${
-            isFav
-              ? "bg-[#FFD600]/20 text-[#FFD600]"
-              : "bg-[#2a2a2a] text-[#ededed] hover:bg-[#3a3a3a]"
-          }`}
-        >
-          {isFav ? "★ Saved" : "☆ Save"}
-        </button>
+        {user ? (
+          <button
+            onClick={onToggleFavorite}
+            className={`inline-flex min-h-[40px] items-center gap-1 rounded-lg px-3 py-2 text-xs font-medium transition ${
+              isFav
+                ? "bg-[#FFD600]/20 text-[#FFD600]"
+                : "bg-[#2a2a2a] text-[#ededed] hover:bg-[#3a3a3a]"
+            }`}
+          >
+            {isFav ? "★ Saved" : "☆ Save"}
+          </button>
+        ) : (
+          <button
+            onClick={openSignIn}
+            className="inline-flex min-h-[40px] items-center gap-1 rounded-lg bg-[#2a2a2a] px-3 py-2 text-xs font-medium text-[#ededed] transition hover:bg-[#3a3a3a]"
+          >
+            ☆ Save
+          </button>
+        )}
         {user ? (
           <button
             onClick={onCheckin}
@@ -689,9 +700,12 @@ function StationDetailContent({
             Check In
           </button>
         ) : (
-          <span className="inline-flex min-h-[40px] items-center text-xs text-[#737373]">
+          <button
+            onClick={openSignIn}
+            className="inline-flex min-h-[40px] items-center rounded-lg border border-[#2a2a2a] bg-[#121212] px-3 py-2 text-xs font-medium text-[#737373] transition hover:border-[#4CAF50]/40 hover:text-[#ededed]"
+          >
             Sign in to check in
-          </span>
+          </button>
         )}
         <button
           onClick={onBoost}
