@@ -28,21 +28,11 @@ export interface Checkin {
   createdAt: string;
 }
 
-export interface Trip {
-  id: string;
-  userId: string;
-  origin: { lat: number; lng: number; name: string };
-  destination: { lat: number; lng: number; name: string };
-  distanceKm: number;
-  carbonSavedKg: number;
-  createdAt: string;
-}
-
 export interface Subscription {
   id: string;
   userId: string;
   stripeCustomerId: string;
-  stripeSubscriptionId: string;
+  stripePaymentIntentId?: string;
   status: string;
   createdAt: string;
 }

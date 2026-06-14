@@ -29,6 +29,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "lat and lng required" }, { status: 400 });
   }
 
+  if (
+    !isNaN(Number(lat)) && !isNaN(Number(lng)) &&
+    Number(lat) >= -90 && Number(lat) <= 90 &&
+    Number(lng) >= -180 && Number(lng) <= 180
+  ) {
+    // valid
+  } else {
+    return NextResponse.json({ error: "Invalid lat/lng" }, { status: 400 });
+  }
+
   const score = computeCrimeRisk(Number(lat), Number(lng));
   return NextResponse.json(score);
 }

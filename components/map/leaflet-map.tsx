@@ -109,6 +109,7 @@ export default function LeafletMap() {
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
 
   const { user } = useAuth();
+  const { openSignIn } = useSignIn();
   const supabase = createClient();
 
   // Geolocation on mount
@@ -121,21 +122,24 @@ export default function LeafletMap() {
     }
   }, []);
 
-  // Fetch stations when center or distance changes
+  // Fetch stations when center or distance changes (debounced 300ms)
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await fetchStations(center[0], center[1], filters.distance);
-        setStations(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Failed to load stations");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    const timeout = setTimeout(() => {
+      const load = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const data = await fetchStations(center[0], center[1], filters.distance);
+          setStations(data);
+        } catch (e: unknown) {
+          setError(e instanceof Error ? e.message : "Failed to load stations");
+        } finally {
+          setLoading(false);
+        }
+      };
+      load();
+    }, 300);
+    return () => clearTimeout(timeout);
   }, [center, filters.distance]);
 
   // Fetch weather alerts
@@ -246,6 +250,12 @@ export default function LeafletMap() {
 
   const planRoute = async () => {
     if (!routeFrom || !routeTo) return;
+    const latDiff = Math.abs(routeFrom.lat - routeTo.lat);
+    const lngDiff = Math.abs(routeFrom.lng - routeTo.lng);
+    if (latDiff < 0.0001 && lngDiff < 0.0001) {
+      setError("Please select different start and end points.");
+      return;
+    }
     setRouteLoading(true);
     try {
       const res = await fetch("/api/safe-route", {
@@ -316,7 +326,7 @@ export default function LeafletMap() {
 
   const handleBoostCheckout = async () => {
     if (!user) {
-      alert("Please sign in first.");
+      openSignIn();
       return;
     }
     try {
@@ -419,7 +429,17 @@ export default function LeafletMap() {
               disabled={!routeFrom || !routeTo || routeLoading}
               className="rounded-lg bg-[#4CAF50] px-3 py-1 text-xs font-bold text-[#121212] disabled:opacity-50"
             >
-              {routeLoading ? "Planning..." : "Plan Route"}
+              {routeLoading ? (
+                <span className="flex items-center gap-1">
+                  <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Planning...
+                </span>
+              ) : (
+                "Plan Route"
+              )}
             </button>
             <button
               onClick={clearRoute}
@@ -432,7 +452,15 @@ export default function LeafletMap() {
       </div>
 
       {/* Route summary */}
-      {routeResult && (
+      {routeLoading ? (
+        <div className="flex items-center gap-2 border-b border-[#2a2a2a] bg-[#1e1e1e] px-4 py-2 text-sm text-[#a0a0a0]">
+          <svg className="h-4 w-4 animate-spin text-[#4CAF50]" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          Calculating route...
+        </div>
+      ) : routeResult ? (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#2a2a2a] bg-[#1e1e1e] px-4 py-2 text-sm">
           <div className="flex items-center gap-3">
             <span className="text-[#4CAF50]">
@@ -477,7 +505,7 @@ export default function LeafletMap() {
             </div>
           )}
         </div>
-      )}
+      ) : null}
 
       {/* Map */}
       <div className="relative flex-1">
@@ -489,8 +517,8 @@ export default function LeafletMap() {
         >
           <MapController center={center} />
           <TileLayer
-            attribution='&copy; <a href="https://osm.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
 
           {filteredStations.map((s) => (
@@ -578,6 +606,7 @@ export default function LeafletMap() {
               handleCheckinClick(selectedStation);
             }}
             onBoost={handleBoostCheckout}
+            center={center}
           />
         )}
       </BottomSheet>
@@ -600,24 +629,36 @@ function StationDetailContent({
   onToggleFavorite,
   onCheckin,
   onBoost,
+  center,
 }: {
   station: EVStation;
   user: { id: string; email?: string } | null;
   isFav: boolean;
-  onToggleFavorite: () => void;
+  onToggleFavorite: () => Promise<void>;
   onCheckin: () => void;
   onBoost: () => void;
+  center: [number, number];
 }) {
   const [crime, setCrime] = useState<{ score: number; label: "Safe" | "Caution" | "Avoid" } | null>(null);
+  const [saving, setSaving] = useState(false);
   const { openSignIn } = useSignIn();
+
+  const handleToggleFavorite = async () => {
+    setSaving(true);
+    try {
+      await onToggleFavorite();
+    } finally {
+      setSaving(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
-    fetchCrimeScore(station.lat, station.lng).then((c) => {
+    fetchCrimeScore(station.lat, station.lng, center[0], center[1]).then((c) => {
       if (!cancelled) setCrime(c);
     });
     return () => { cancelled = true; };
-  }, [station.lat, station.lng]);
+  }, [station.lat, station.lng, center]);
 
   return (
     <div className="space-y-4">
@@ -675,14 +716,15 @@ function StationDetailContent({
       <div className="flex flex-wrap gap-2 pt-2">
         {user ? (
           <button
-            onClick={onToggleFavorite}
+            onClick={handleToggleFavorite}
+            disabled={saving}
             className={`inline-flex min-h-[40px] items-center gap-1 rounded-lg px-3 py-2 text-xs font-medium transition ${
               isFav
                 ? "bg-[#FFD600]/20 text-[#FFD600]"
                 : "bg-[#2a2a2a] text-[#ededed] hover:bg-[#3a3a3a]"
-            }`}
+            } ${saving ? "opacity-50" : ""}`}
           >
-            {isFav ? "★ Saved" : "☆ Save"}
+            {saving ? "Saving..." : isFav ? "★ Saved" : "☆ Save"}
           </button>
         ) : (
           <button

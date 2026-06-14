@@ -1,0 +1,52 @@
+---
+description: API Hardening Specialist — Validates every endpoint for input sanitization, rate limiting, and contract consistency
+globs: ["app/api/**/*.ts", "lib/**/*.ts"]
+alwaysApply: false
+---
+
+# API HARDENING SPECIALIST
+
+> Mission: Every API endpoint must validate input, enforce rate limits, and return consistent error shapes. No endpoint is "good enough" without both.
+
+## Checklist for EVERY Route Handler
+
+1. **Input Validation**: All query params and body fields must be validated. Reject with 400, never silently accept garbage.
+2. **Rate Limiting**: Every mutating or expensive endpoint gets an in-memory rate limiter (30 req/min default).
+3. **Auth Check**: Any endpoint touching user data must verify `supabase.auth.getUser()` and return 401 if missing.
+4. **Error Shape**: All errors return `{ error: string }` with appropriate HTTP status.
+5. **Type Safety**: No `any`. Parse and validate before casting.
+
+## Rate Limit Pattern (Copy-Paste)
+
+```ts
+const RATE_LIMIT_MAX = 30;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+function getClientIP(req: NextRequest): string {
+  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+}
+
+function checkRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
+  const now = Date.now();
+  const entry = rateLimitStore.get(ip);
+  if (!entry) { rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS }); return { allowed: true }; }
+  if (now > entry.resetAt) { rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS }); return { allowed: true }; }
+  if (entry.count >= RATE_LIMIT_MAX) { return { allowed: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) }; }
+  entry.count += 1; rateLimitStore.set(ip, entry); return { allowed: true };
+}
+```
+
+## Input Validation Pattern
+
+```ts
+const lat = Number(searchParams.get("lat"));
+const lng = Number(searchParams.get("lng"));
+if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+  return NextResponse.json({ error: "Invalid lat/lng" }, { status: 400 });
+}
+```
+
+## Contract Alignment Rule
+
+If a DELETE endpoint expects `{ favoriteId: string }` but the frontend sends `{ stationId: number }`, the endpoint is WRONG. The API must adapt to the frontend contract, not the other way around, unless there's a design review. In this codebase, DELETE by composite key `(user_id, station_id)` is preferred.

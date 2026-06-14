@@ -162,8 +162,16 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="mt-auto border-t border-[#2a2a2a] py-8 text-center text-sm text-[#737373]">
-        EcoRoute &copy; {new Date().getFullYear()} — Built for EV drivers.
+      <footer className="mt-auto border-t border-[#2a2a2a] py-8">
+        <div className="mx-auto max-w-6xl px-4">
+          <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+            <p className="text-sm text-[#737373]">EcoRoute &copy; {new Date().getFullYear()}</p>
+            <div className="flex gap-4 text-sm text-[#737373]">
+              <Link href="/privacy" className="transition hover:text-[#ededed]">Privacy Policy</Link>
+              <Link href="/terms" className="transition hover:text-[#ededed]">Terms of Service</Link>
+            </div>
+          </div>
+        </div>
       </footer>
     </div>
   );

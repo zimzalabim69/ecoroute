@@ -36,6 +36,9 @@ function parseStation(raw: Record<string, unknown>): EVStation | null {
   const mediaItems = (raw.mediaItems ?? []) as Record<string, unknown>[];
   const photos = mediaItems.map((m) => m.itemThumbnailUrl as string).filter(Boolean);
 
+  const cost = ((raw.usageCost as string) || "").toLowerCase().trim();
+  const isFree = !cost || cost.includes("free") || cost.includes("0.00") || cost.includes("complimentary") || cost.includes("no cost") || cost === "";
+
   return {
     id: raw.id as number,
     name: (addr.title as string) || "Unnamed Station",
@@ -46,7 +49,7 @@ function parseStation(raw: Record<string, unknown>): EVStation | null {
     lat: addr.latitude as number,
     lng: addr.longitude as number,
     connectors,
-    isFree: ((raw.usageCost as string) || "").toLowerCase().includes("free"),
+    isFree,
     photos,
     checkinCount: (raw.numberOfPoints as number) || 0,
     averageRating: (raw.userRating as Record<string, unknown>)?.rating as number | undefined,

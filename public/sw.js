@@ -4,8 +4,8 @@ const STATIC_ASSETS = [
   '/map',
   '/offline.html',
   '/manifest.json',
-  '/icon-192x192.png',
-  '/icon-512x512.png',
+  '/icon-192x192.svg',
+  '/icon-512x512.svg',
 ];
 
 const MAP_TILE_CACHE = 'ecoroute-map-tiles-v1';

@@ -64,12 +64,8 @@ function isEntertainmentCorridor(
 export function computeCrimeRisk(
   lat: number,
   lng: number,
-  cityCenterLat: number = parseFloat(
-    process.env.NEXT_PUBLIC_DEFAULT_CITY_LAT || "41.2565"
-  ),
-  cityCenterLng: number = parseFloat(
-    process.env.NEXT_PUBLIC_DEFAULT_CITY_LNG || "-95.9345"
-  ),
+  cityCenterLat: number = 41.2565,
+  cityCenterLng: number = -95.9345,
   hour?: number
 ): CrimeScore {
   const h = hour ?? getLocalHour();

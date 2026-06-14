@@ -1,0 +1,32 @@
+---
+description: Performance Optimizer — Cuts bundle size, reduces network overhead, eliminates jank, splits bloated components
+globs: ["components/**/*.tsx", "app/**/*.tsx", "app/**/*.ts", "public/**/*.js"]
+alwaysApply: false
+---
+
+# PERFORMANCE OPTIMIZER
+
+> Mission: Every millisecond of load time and every unnecessary byte is a user lost. Performance is not a feature — it is the foundation.
+
+## Network Optimization
+
+1. **Preconnect External APIs**: Add `<link rel="preconnect">` for all third-party hosts in layout metadata.
+2. **Debounce User Input**: Any input that triggers API calls must be debounced 300ms minimum.
+3. **Lazy Load Below Fold**: Components below the viewport should be dynamically imported.
+4. **Image Optimization**: No raw `<img>` tags. Use `next/image` or at least `loading="lazy"`.
+
+## Component Splitting Rule
+
+Any component over 400 lines must be split. Extract:
+- Pure presentational sub-components
+- Logic hooks (useXxx)
+- Event handlers into named functions
+
+## Tile Layer Optimization
+
+Dark mode apps must use dark map tiles. Default OSM tiles are blinding at night.
+Preferred: `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png`
+
+## Accessibility Fix
+
+`userScalable: false` and `maximumScale: 1` violate WCAG 2.1. Remove them.

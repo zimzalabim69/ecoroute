@@ -41,6 +41,12 @@ export function SignInModal({ isOpen, onClose }: SignInModalProps) {
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!email.trim() || loading) return;
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        setError("Please enter a valid email address.");
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       setError(null);
       try {

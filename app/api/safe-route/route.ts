@@ -2,6 +2,43 @@ import { NextRequest, NextResponse } from "next/server";
 import type { SafeRouteResult, RoutePlanResult } from "@/types";
 import { computeCrimeRisk } from "@/lib/crime-heuristic";
 
+const RATE_LIMIT_MAX = 30;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+function getClientIP(req: NextRequest): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0].trim();
+  }
+  return "unknown";
+}
+
+function checkRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
+  const now = Date.now();
+  const entry = rateLimitStore.get(ip);
+
+  if (!entry) {
+    rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true };
+  }
+
+  if (now > entry.resetAt) {
+    rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true };
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX) {
+    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+    return { allowed: false, retryAfter };
+  }
+
+  entry.count += 1;
+  rateLimitStore.set(ip, entry);
+  return { allowed: true };
+}
+
 function isNightMode(): boolean {
   const hour = new Date().getHours();
   return hour >= 18 || hour < 6;
@@ -22,6 +59,19 @@ function samplePointsAlongRoute(
 }
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIP(req);
+  const limit = checkRateLimit(ip);
+
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Try again later." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(limit.retryAfter ?? 60) },
+      }
+    );
+  }
+
   try {
     const body = await req.json();
     const from = body.from as { lat: number; lng: number };
