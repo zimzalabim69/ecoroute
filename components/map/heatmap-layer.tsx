@@ -96,11 +96,11 @@ export function HeatmapLayer({ center, visible }: HeatmapLayerProps) {
     canvas.style.width = "100%";
     canvas.style.height = "100%";
     canvas.style.pointerEvents = "none";
-    canvas.style.zIndex = "400";
+    canvas.style.zIndex = "500";
     canvas.style.mixBlendMode = "screen";
 
-    const pane = map.getPane("overlayPane");
-    if (pane) pane.appendChild(canvas);
+    const container = map.getContainer();
+    container.appendChild(canvas);
 
     const redraw = () => {
       drawHeatmap(canvas, map, center[0], center[1]);
@@ -111,8 +111,8 @@ export function HeatmapLayer({ center, visible }: HeatmapLayerProps) {
 
     return () => {
       map.off("moveend zoomend resize", redraw);
-      if (pane && canvas.parentNode === pane) {
-        pane.removeChild(canvas);
+      if (canvas.parentNode) {
+        canvas.parentNode.removeChild(canvas);
       }
     };
   }, [map, center, visible]);
