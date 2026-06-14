@@ -31,14 +31,30 @@ See .env.example for full list.
 | Phase | Status | Blocker | Notes |
 |-------|--------|---------|-------|
 | **Step 0: Pre-flight** | PASS | None | Build PASS, Lint PASS (1 warning), CLIs installed |
-| **Step 1: Supabase** | IN PROGRESS | CLI login required | Project created (`dwxulsayhrzeelkfyiqj`). Migrations ready. Need `supabase login` + `supabase link` + `supabase db push`. |
-| **Step 2: Vercel** | BLOCKED | CLI login required | Need `vercel login` + `vercel link` + preview deploy. |
-| **Step 3: Stripe** | NOT STARTED | CLI login + test account | Need `stripe login` (shell restart) + test product + webhook. |
-| **Step 4: Post-launch** | NOT STARTED | Blocked on Phase 2/3 | Smoke test pending. |
+| **Step 1: Supabase** | **BONES INSERTED** | CLI login required | Project created. `config.toml`, `seed.sql`, migrations, RLS skeleton all ready. One command to activate: `supabase link --project-ref dwxulsayhrzeelkfyiqj` + `supabase db push`. |
+| **Step 2: Vercel** | **BONES INSERTED** | CLI login required | `vercel.json` config template created. `DEPLOY-COMMANDS.md` has all commented commands. One command to activate: `vercel link` + `vercel --prod`. |
+| **Step 3: Stripe** | **BONES INSERTED** | CLI login + test account | `stripe-test-setup.md` has templates, placeholder keys, test cards, webhook template. One command to activate: `stripe login` + create product/webhook. |
+| **Step 4: Post-launch** | **BONES INSERTED** | Blocked on Phase 2/3 | Smoke test script in `DEPLOY-COMMANDS.md`. |
 
 **Supabase Project**: `dwxulsayhrzeelkfyiqj`  
 **Supabase URL**: `https://dwxulsayhrzeelkfyiqj.supabase.co`  
-**Next action**: Run `supabase login` and `vercel login` in your terminal (browser OAuth required). Then I can resume autonomous deployment.
+**Activation command**: See `DEPLOY-COMMANDS.md` → "One-Line Activation" section.
+
+---
+
+## Bones Inserted — Ready for Future Activation
+
+The following skeleton files have been created. Nothing has been executed against live services.
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `supabase/config.toml` | Supabase CLI config with project ref commented | Ready |
+| `supabase/seed.sql` | Seed data templates (dev user, sample checkins, sample trip) | Ready |
+| `supabase/migrations/004_rls_policies_bones.sql` | Enhanced RLS policies + future table skeletons | Ready |
+| `.devin/env-local-example.md` | Env var template with real project URL + placeholders | Ready |
+| `vercel.json` | Vercel deployment config (regions, headers, rewrites, env) | Ready |
+| `DEPLOY-COMMANDS.md` | All CLI commands commented out + one-line activation block | Ready |
+| `stripe-test-setup.md` | Stripe test templates, placeholder keys, test cards, webhook script | Ready |
 
 ---
 

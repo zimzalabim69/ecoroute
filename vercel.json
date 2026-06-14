@@ -1,0 +1,40 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "_comment": "EcoRoute Vercel Configuration (BONES ONLY). Activate by deploying with: vercel --prod",
+  "buildCommand": "npm run build",
+  "installCommand": "npm ci",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/manifest.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/stripe/webhook",
+      "destination": "/api/stripe-webhook"
+    }
+  ],
+  "env": {
+    "_comment_env": "These are FALLBACKS. Real values are set via 'vercel env add' or Vercel Dashboard.",
+    "NEXT_PUBLIC_SUPABASE_URL": "@ecoroute-supabase-url",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@ecoroute-supabase-anon",
+    "SUPABASE_SERVICE_ROLE_KEY": "@ecoroute-supabase-service"
+  }
+}
