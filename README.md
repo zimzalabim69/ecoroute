@@ -1,29 +1,49 @@
 # EcoRoute
 
 > A Levels.io-style PWA for EV charger discovery, route planning, and carbon tracking.
-> Built for broke solo founders who need to ship fast and monetize faster.
+> Now with real driving routes, safety scoring, and mobile-first UX.
 
 ## Tech Stack
 
 - **Framework**: Next.js 16 (App Router) + TypeScript + Tailwind CSS v4
 - **Maps**: Leaflet + React-Leaflet (OpenStreetMap tiles)
+- **Routing**: OpenRouteService (ORS) — free, open-source directions
 - **Backend/Auth**: Supabase (Auth, Postgres, Realtime)
 - **Payments**: Stripe Checkout + Webhooks
-- **Data**: Open Charge Map API (free tier)
+- **Data**: Open Charge Map API (EV chargers), CrimeoMeter API (safety), NWS API (weather)
 - **Hosting**: Vercel
-- **PWA**: Native manifest + service worker
+- **PWA**: Native manifest + service worker with cache expiration + offline fallback
 
-## Features
+## What's New in v2 (The Ultimate EcoRoute)
 
-- **Landing Page**: Hero, value prop, testimonials, pricing
-- **Map**: Full-screen Leaflet with live EV charger data
-- **Filters**: Connector type, speed (kW), free/paid, distance
-- **Check-ins**: Logged-in users update station status + rating
-- **Route Planner**: Two-point input with nearest chargers + carbon saved
-- **Carbon Dashboard**: Real-time CO₂ savings per trip
-- **Auth**: Supabase magic link
-- **Monetization**: One-time `$2.99` Boost unlocks routes + carbon reports
-- **PWA**: Offline map tiles + station cache, installable
+### Real Route Planning (ABRP-style)
+- **OpenRouteService integration** — actual driving routes, not straight lines
+- **Turn-by-turn instructions** with distance and duration
+- **Auto-detect chargers along route** within 2km of the path
+- **Carbon savings** calculated from real route distance
+
+### Safety Layer (No competitor has this)
+- **Crime risk scoring** per station via CrimeoMeter API
+- **Route safety score** — samples 10 points along the route and averages crime risk
+- **Night mode boost** — extra safety weighting after 6pm
+- **Weather alerts** from National Weather Service along your route
+- **Color-coded badges**: Safe (green), Caution (yellow), Avoid (red)
+
+### Mobile-First UX (PlugShare-style, but cleaner)
+- **Bottom sheet** for station details on mobile — draggable, snap points, swipe to close
+- **Floating search bar** with Nominatim geocoding ("123 Main St" → lat/lng)
+- **Skeleton loaders** — shimmer effect while stations load
+- **Check-in modal** — proper form with star rating, status, photo URL (no more `alert()`)
+- **PWA install prompt** — shows after 2nd visit, one-tap install
+- **Touch targets** — 48px minimum, 56px for critical actions
+
+### Features & Hardening
+- **Saved favorites** — heart stations, accessible from any session
+- **Trip history** — `/history` page shows all planned routes with carbon + safety scores
+- **Error boundaries** — map crashes gracefully instead of white-screening
+- **Stripe webhook idempotency** — duplicate events are ignored, no double-charging
+- **Rate limiting** — OCM proxy limited to 30 req/min per IP
+- **Service worker** — cache expiration after 1 hour, LRU eviction, offline fallback page
 
 ## Getting Started
 
@@ -51,6 +71,9 @@ cp .env.example .env.local
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key |
 | `STRIPE_SECRET_KEY` | Stripe secret key |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook endpoint secret |
+| `OCM_API_KEY` | Open Charge Map API key (free at openchargemap.org) |
+| `ORS_API_KEY` | OpenRouteService API key (free at openrouteservice.org) |
+| `CRIMEOMETER_API_KEY` | CrimeoMeter API key (free tier: 100 req/day) |
 | `NEXT_PUBLIC_DEFAULT_CITY_LAT` | Default map center latitude |
 | `NEXT_PUBLIC_DEFAULT_CITY_LNG` | Default map center longitude |
 | `NEXT_PUBLIC_DEFAULT_CITY_NAME` | Default city label |
@@ -59,20 +82,29 @@ cp .env.example .env.local
 
 1. Create a project at [supabase.com](https://supabase.com)
 2. Go to **SQL Editor** → **New query**
-3. Copy the contents of `supabase/migrations/001_initial_schema.sql`
-4. Run the query
-5. Enable **Email** provider in Authentication → Providers (Magic Link is enabled by default)
+3. Run `supabase/migrations/001_initial_schema.sql`
+4. Run `supabase/migrations/002_favorites_trips.sql`
+5. Enable **Email** provider in Authentication → Providers (Magic Link enabled by default)
 
 ### 4. Stripe Setup
 
 1. Create an account at [stripe.com](https://stripe.com)
 2. Get your test keys from Developers → API Keys
-3. Create a product + price for a one-time `$2.99` payment, or use the dynamic price creation in `/api/stripe-checkout`
-4. Create a webhook endpoint pointing to `https://your-domain.com/api/stripe-webhook`
-5. Select `checkout.session.completed` event
-6. Copy the webhook signing secret
+3. Create a webhook endpoint pointing to `https://your-domain.com/api/stripe-webhook`
+4. Select `checkout.session.completed` event
+5. Copy the webhook signing secret
 
-### 5. Change Default City
+### 5. API Keys (Free Tiers)
+
+| Service | Free Tier | Signup |
+|---------|-----------|--------|
+| Open Charge Map | Required for API access | [openchargemap.org/site/develop#api](https://openchargemap.org/site/develop#api) |
+| OpenRouteService | 500 req/day | [api.openrouteservice.org](https://api.openrouteservice.org) |
+| CrimeoMeter | 100 req/day | [crimeometer.com](https://crimeometer.com) |
+| NWS Weather | No key needed | Built-in |
+| Nominatim (Geocoding) | No key needed | Built-in (OpenStreetMap) |
+
+### 6. Change Default City
 
 Edit `.env.local`:
 
@@ -82,7 +114,7 @@ NEXT_PUBLIC_DEFAULT_CITY_LNG=-122.4194
 NEXT_PUBLIC_DEFAULT_CITY_NAME=San Francisco, CA
 ```
 
-### 6. Run Locally
+### 7. Run Locally
 
 ```bash
 npm run dev
@@ -90,16 +122,16 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### 7. Deploy to Vercel
+### 8. Deploy to Vercel
 
 **Option A: Dashboard**
 1. Push to GitHub
 2. Import repo at [vercel.com](https://vercel.com)
-3. Add environment variables in Project Settings
+3. Add all environment variables in Project Settings
 
 **Option B: CLI**
 ```bash
-npx vercel
+npx vercel --prod
 ```
 
 ## Project Structure
@@ -107,58 +139,105 @@ npx vercel
 ```
 app/
   ├── api/
-  │   ├── stripe-checkout/route.ts   # Stripe Checkout session
-  │   └── stripe-webhook/route.ts    # Stripe webhook handler
+  │   ├── crime/route.ts              # Crime risk proxy + rate limit
+  │   ├── favorites/route.ts          # Save/unsave favorite stations
+  │   ├── ocm/route.ts                # Open Charge Map proxy + rate limit
+  │   ├── route-plan/route.ts         # ORS driving directions
+  │   ├── safe-route/route.ts         # Route + crime scoring
+  │   ├── stripe-checkout/route.ts    # Stripe Checkout session
+  │   ├── stripe-webhook/route.ts     # Stripe webhook (idempotent)
+  │   ├── trips/route.ts              # Trip history CRUD
+  │   └── weather/route.ts            # NWS alerts proxy
+  ├── history/
+  │   └── page.tsx                    # Trip history page
   ├── map/
-  │   └── page.tsx                   # Map page (dynamic Leaflet)
-  ├── layout.tsx                     # Root layout + auth provider
-  └── page.tsx                       # Landing page
+  │   └── page.tsx                    # Map page (ErrorBoundary wrapped)
+  ├── layout.tsx                     # Root layout + PWA install prompt
+  └── page.tsx                        # Landing page
 components/
-  ├── auth-provider.tsx              # Supabase auth context
-  ├── navbar.tsx                     # Top navigation
-  ├── service-worker-register.tsx    # PWA SW registration
-  └── map/
-      ├── leaflet-map.tsx            # Main map + filters + planner
-      └── map-wrapper.tsx            # SSR-safe dynamic import
+  ├── auth-provider.tsx               # Supabase auth context
+  ├── error-boundary.tsx              # React error boundary
+  ├── install-prompt.tsx              # PWA install banner
+  ├── navbar.tsx                      # Top navigation
+  ├── service-worker-register.tsx     # SW registration
+  ├── map/
+  │   ├── leaflet-map.tsx            # Main map (all features integrated)
+  │   ├── map-wrapper.tsx            # SSR-safe dynamic import
+  │   └── search-bar.tsx             # Geocoding search bar
+  └── ui/
+      ├── bottom-sheet.tsx           # Mobile bottom sheet
+      ├── checkin-modal.tsx          # Check-in form modal
+      ├── skeleton.tsx               # Shimmer loader
+      └── star-rating.tsx            # 5-star rating input
 lib/
-  ├── ocm.ts                         # Open Charge Map API client
-  └── supabase/
-      ├── client.ts                  # Browser Supabase client
-      ├── server.ts                  # Server Supabase client
-      └── middleware.ts            # Proxy auth session handler
+  ├── crime.ts                        # CrimeoMeter client + risk colors
+  ├── ocm.ts                          # Open Charge Map client
+  ├── ors.ts                          # OpenRouteService client + polyline decoder
+  ├── supabase/
+  │   ├── client.ts                  # Browser Supabase client
+  │   ├── server.ts                  # Server Supabase client
+  │   └── middleware.ts              # Proxy auth session handler
+  └── utils.ts                        # cn() helper (clsx + tailwind-merge)
 public/
-  ├── manifest.json                  # PWA manifest
-  ├── sw.js                          # Service worker
+  ├── manifest.json                   # PWA manifest
+  ├── offline.html                   # Offline fallback page
+  ├── sw.js                          # Service worker (cache expiration + LRU)
   └── icon-*.svg                     # PWA icons
 supabase/
-  ├── migrations/001_initial_schema.sql
-  └── functions/                     # Edge Functions (optional)
+  ├── migrations/
+  │   ├── 001_initial_schema.sql     # profiles, checkins, trips, subscriptions
+  │   └── 002_favorites_trips.sql    # favorites, trip_history
+  └── functions/                      # Edge Functions (optional fallback)
       ├── stripe-checkout/index.ts
       └── stripe-webhook/index.ts
 types/
-  └── index.ts                       # Shared TypeScript types
+  └── index.ts                       # All TypeScript types
 ```
 
 ## Launch Checklist
 
-- [ ] Supabase project created + schema migrated
+- [ ] Supabase project created + both migrations run
 - [ ] Auth email provider enabled
 - [ ] Stripe account created + keys added to env
 - [ ] Stripe webhook configured and tested
+- [ ] OCM API key obtained and added to env
+- [ ] ORS API key obtained and added to env
+- [ ] CrimeoMeter API key obtained and added to env
 - [ ] Default city changed (if not Omaha, NE)
 - [ ] `npm run build` passes
-- [ ] `npm run lint` passes
+- [ ] `npm run lint` passes (only img warning acceptable)
 - [ ] Test payment with Stripe test card: `4242 4242 4242 4242`
 - [ ] PWA install prompt works on mobile
-- [ ] Map loads correctly with user geolocation
+- [ ] Map loads with user geolocation
+- [ ] Search bar geocodes addresses correctly
+- [ ] Route planner draws real driving route
+- [ ] Safety score appears on planned routes
 - [ ] Check-in flow tested with logged-in user
+- [ ] Favorites save and persist
+- [ ] Trip history page shows saved trips
 - [ ] Deployed to Vercel with all env vars
 - [ ] Live URL shared
 
-## Monetization Notes
+## Competitive Feature Matrix
 
-- **Free tier**: Map browsing, charger details, community check-ins
-- **Boost ($2.99 one-time)**: Route planner, carbon dashboard, saved favorites, ad-free
+| Feature | EcoRoute | PlugShare | ABRP | Google Maps |
+|---------|----------|-----------|------|-------------|
+| Community check-ins / photos | ✅ | ✅ | ❌ | ❌ |
+| Real driving route planning | ✅ | ❌ | ✅ | ✅ |
+| Auto charger detection on route | ✅ | ❌ | ✅ | ✅ |
+| Carbon tracking | ✅ | ❌ | ❌ | ❌ |
+| Crime / safety scoring | ✅ | ❌ | ❌ | ❌ |
+| Weather alerts along route | ✅ | ❌ | ❌ | ❌ |
+| Night mode safety boost | ✅ | ❌ | ❌ | ❌ |
+| Saved favorites | ✅ | ✅ | ✅ | ✅ |
+| Trip history | ✅ | ❌ | ❌ | ❌ |
+| PWA / offline support | ✅ | ❌ | ❌ | ❌ |
+| One-time payment (not subscription) | ✅ | ❌ | ❌ | ❌ |
+
+## Monetization
+
+- **Free**: Map browsing, charger details, community check-ins, basic route planning
+- **Boost ($2.99 one-time)**: Unlimited routes, carbon dashboard, saved favorites, ad-free
 - To change price: edit `unit_amount` in `app/api/stripe-checkout/route.ts` (cents)
 
 ## License
