@@ -46,3 +46,75 @@ export interface Subscription {
   status: string;
   createdAt: string;
 }
+
+// --- Route Planning Types ---
+
+export interface RoutePlanResult {
+  distanceM: number;
+  durationSec: number;
+  geometry: [number, number][]; // lng,lat pairs
+  instructions: RouteStep[];
+  chargingStops: EVStation[];
+}
+
+export interface RouteStep {
+  instruction: string;
+  distanceM: number;
+  durationSec: number;
+  maneuver?: string;
+}
+
+// --- Weather Types ---
+
+export interface WeatherAlert {
+  event: string;
+  severity: "Minor" | "Moderate" | "Severe" | "Extreme";
+  headline: string;
+  description: string;
+  effective: string;
+  expires: string;
+  areas: string[];
+}
+
+// --- Safety Types ---
+
+export interface CrimeHeatmapPoint {
+  lat: number;
+  lng: number;
+  riskScore: number; // 0-100
+  label: "Safe" | "Caution" | "Avoid";
+}
+
+export interface SafeRouteResult {
+  route: RoutePlanResult;
+  safetyScore: number; // 0-100
+  warnings: string[];
+  nightModeActive: boolean;
+}
+
+// --- Favorites & History Types ---
+
+export interface Favorite {
+  id: string;
+  userId: string;
+  stationId: number;
+  stationName: string;
+  lat: number;
+  lng: number;
+  createdAt: string;
+}
+
+export interface TripHistory {
+  id: string;
+  userId: string;
+  originName: string;
+  originLat: number;
+  originLng: number;
+  destinationName: string;
+  destinationLat: number;
+  destinationLng: number;
+  distanceKm: number;
+  carbonSavedKg: number;
+  safetyScore: number;
+  createdAt: string;
+}

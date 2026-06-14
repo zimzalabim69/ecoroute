@@ -1,31 +1,41 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   MapContainer,
   TileLayer,
   Marker,
-  Popup,
-  useMap,
   Polyline,
   Circle,
+  useMap,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { EVStation } from "@/types";
+import type { EVStation, SafeRouteResult, WeatherAlert } from "@/types";
 import { fetchStations } from "@/lib/ocm";
+import { fetchCrimeScore, getRiskColor } from "@/lib/crime";
 import { useAuth } from "@/components/auth-provider";
 import { createClient } from "@/lib/supabase/client";
+import { SearchBar } from "./search-bar";
+import { CheckinModal } from "@/components/ui/checkin-modal";
+import type { CheckinFormData } from "@/components/ui/checkin-modal";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 
-const DEFAULT_LAT = parseFloat(process.env.NEXT_PUBLIC_DEFAULT_CITY_LAT || "41.2565");
-const DEFAULT_LNG = parseFloat(process.env.NEXT_PUBLIC_DEFAULT_CITY_LNG || "-95.9345");
+const DEFAULT_LAT = parseFloat(
+  process.env.NEXT_PUBLIC_DEFAULT_CITY_LAT || "41.2565"
+);
+const DEFAULT_LNG = parseFloat(
+  process.env.NEXT_PUBLIC_DEFAULT_CITY_LNG || "-95.9345"
+);
 
-// Fix Leaflet default icon paths
 const DefaultIcon = L.icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  iconUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
   iconRetinaUrl:
     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  shadowUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
@@ -40,11 +50,21 @@ const evIcon = new L.DivIcon({
   iconAnchor: [7, 7],
 });
 
-function MapController({
-  center,
-}: {
-  center: [number, number];
-}) {
+const routeStartIcon = new L.DivIcon({
+  className: "route-start-marker",
+  html: `<div style="background:#4CAF50;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.5);"></div>`,
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+const routeEndIcon = new L.DivIcon({
+  className: "route-end-marker",
+  html: `<div style="background:#FFD600;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.5);"></div>`,
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+function MapController({ center }: { center: [number, number] }) {
   const map = useMap();
   useEffect(() => {
     map.setView(center, map.getZoom());
@@ -53,7 +73,10 @@ function MapController({
 }
 
 export default function LeafletMap() {
-  const [center, setCenter] = useState<[number, number]>([DEFAULT_LAT, DEFAULT_LNG]);
+  const [center, setCenter] = useState<[number, number]>([
+    DEFAULT_LAT,
+    DEFAULT_LNG,
+  ]);
   const [stations, setStations] = useState<EVStation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,24 +86,41 @@ export default function LeafletMap() {
     freeOnly: false,
     distance: 10,
   });
-  const [routePoints, setRoutePoints] = useState<{
-    from: { lat: number; lng: number; name: string } | null;
-    to: { lat: number; lng: number; name: string } | null;
-  }>({ from: null, to: null });
+
+  // Selected station for bottom sheet
+  const [selectedStation, setSelectedStation] = useState<EVStation | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  // Check-in modal
+  const [checkinStation, setCheckinStation] = useState<EVStation | null>(null);
+  const [checkinOpen, setCheckinOpen] = useState(false);
+
+  // Route planning
+  const [routeFrom, setRouteFrom] = useState<{ lat: number; lng: number; name: string } | null>(null);
+  const [routeTo, setRouteTo] = useState<{ lat: number; lng: number; name: string } | null>(null);
+  const [routeResult, setRouteResult] = useState<SafeRouteResult | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+
+  // Weather alerts
+  const [weatherAlerts, setWeatherAlerts] = useState<WeatherAlert[]>([]);
+
+  // Favorites
+  const [favorites, setFavorites] = useState<Set<number>>(new Set());
+
   const { user } = useAuth();
   const supabase = createClient();
 
+  // Geolocation on mount
   useEffect(() => {
     if (typeof window !== "undefined" && "geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => setCenter([pos.coords.latitude, pos.coords.longitude]),
-        () => {
-          /* fallback to default */
-        }
+        () => {}
       );
     }
   }, []);
 
+  // Fetch stations when center or distance changes
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -96,6 +136,39 @@ export default function LeafletMap() {
     };
     load();
   }, [center, filters.distance]);
+
+  // Fetch weather alerts
+  useEffect(() => {
+    const loadWeather = async () => {
+      try {
+        const res = await fetch(`/api/weather?lat=${center[0]}&lng=${center[1]}`);
+        if (res.ok) {
+          const data = (await res.json()) as WeatherAlert[];
+          setWeatherAlerts(data);
+        }
+      } catch {
+        // weather is non-critical
+      }
+    };
+    loadWeather();
+  }, [center]);
+
+  // Load favorites
+  useEffect(() => {
+    if (!user) return;
+    const loadFavs = async () => {
+      try {
+        const res = await fetch("/api/favorites");
+        if (res.ok) {
+          const data = (await res.json()) as { stationId: number }[];
+          setFavorites(new Set(data.map((f) => f.stationId)));
+        }
+      } catch {
+        // non-critical
+      }
+    };
+    loadFavs();
+  }, [user]);
 
   const filteredStations = useMemo(() => {
     return stations.filter((s) => {
@@ -114,31 +187,131 @@ export default function LeafletMap() {
     });
   }, [stations, filters]);
 
-  const routeLine = useMemo(() => {
-    if (!routePoints.from || !routePoints.to) return null;
-    return [
-      [routePoints.from.lat, routePoints.from.lng] as [number, number],
-      [routePoints.to.lat, routePoints.to.lng] as [number, number],
-    ];
-  }, [routePoints]);
+  const handleSearchSelect = useCallback((lat: number, lng: number) => {
+    setCenter([lat, lng]);
+  }, []);
 
-  const carbonSaved = useMemo(() => {
-    if (!routePoints.from || !routePoints.to) return 0;
-    const distKm =
-      L.latLng(routePoints.from.lat, routePoints.from.lng).distanceTo(
-        L.latLng(routePoints.to.lat, routePoints.to.lng)
-      ) / 1000;
-    return distKm * 0.12;
-  }, [routePoints]);
+  const handleStationClick = (station: EVStation) => {
+    setSelectedStation(station);
+    setSheetOpen(true);
+  };
 
-  const routeStations = useMemo(() => {
-    if (!routePoints.from || !routePoints.to) return [];
-    const bounds = L.latLngBounds(
-      [routePoints.from.lat, routePoints.from.lng],
-      [routePoints.to.lat, routePoints.to.lng]
-    ).pad(0.2);
-    return filteredStations.filter((s) => bounds.contains([s.lat, s.lng]));
-  }, [filteredStations, routePoints]);
+  const handleCheckinClick = (station: EVStation) => {
+    setCheckinStation(station);
+    setCheckinOpen(true);
+  };
+
+  const handleCheckinSubmit = async (data: CheckinFormData) => {
+    if (!user || !checkinStation) return;
+    await supabase.from("checkins").insert({
+      station_id: checkinStation.id,
+      user_id: user.id,
+      status: data.status,
+      rating: data.rating,
+      note: data.note,
+      photo_url: data.photoUrl,
+    });
+    setCheckinOpen(false);
+  };
+
+  const toggleFavorite = async (station: EVStation) => {
+    if (!user) return;
+    const isFav = favorites.has(station.id);
+    if (isFav) {
+      await fetch("/api/favorites", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stationId: station.id }),
+      });
+      setFavorites((prev) => {
+        const next = new Set(prev);
+        next.delete(station.id);
+        return next;
+      });
+    } else {
+      await fetch("/api/favorites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stationId: station.id,
+          stationName: station.name,
+          lat: station.lat,
+          lng: station.lng,
+        }),
+      });
+      setFavorites((prev) => new Set(prev).add(station.id));
+    }
+  };
+
+  const planRoute = async () => {
+    if (!routeFrom || !routeTo) return;
+    setRouteLoading(true);
+    try {
+      const res = await fetch("/api/safe-route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from: routeFrom, to: routeTo }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as SafeRouteResult;
+        setRouteResult(data);
+        // Save trip to history
+        if (user) {
+          await fetch("/api/trips", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              originName: routeFrom.name,
+              originLat: routeFrom.lat,
+              originLng: routeFrom.lng,
+              destinationName: routeTo.name,
+              destinationLat: routeTo.lat,
+              destinationLng: routeTo.lng,
+              distanceKm: data.route.distanceM / 1000,
+              carbonSavedKg: (data.route.distanceM / 1000) * 0.12,
+              safetyScore: data.safetyScore,
+            }),
+          });
+        }
+      } else {
+        setError("Route planning failed. Try again.");
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Route planning failed");
+    } finally {
+      setRouteLoading(false);
+    }
+  };
+
+  const clearRoute = () => {
+    setRouteFrom(null);
+    setRouteTo(null);
+    setRouteResult(null);
+  };
+
+  const routeGeometry = useMemo(() => {
+    if (!routeResult) return null;
+    // ORS returns [lng, lat] pairs, Leaflet needs [lat, lng]
+    return routeResult.route.geometry.map(([lng, lat]) => [lat, lng] as [number, number]);
+  }, [routeResult]);
+
+  const routeChargers = useMemo(() => {
+    if (!routeResult) return [];
+    // Find chargers within 2km of any route point (simple approximation)
+    const chargers: EVStation[] = [];
+    const seen = new Set<number>();
+    for (const [lat, lng] of routeResult.route.geometry) {
+      for (const s of filteredStations) {
+        if (seen.has(s.id)) continue;
+        const d = L.latLng(lat, lng).distanceTo(L.latLng(s.lat, s.lng));
+        if (d < 2000) {
+          seen.add(s.id);
+          chargers.push(s);
+        }
+      }
+    }
+    return chargers;
+  }, [routeResult, filteredStations]);
 
   const handleBoostCheckout = async () => {
     if (!user) {
@@ -165,96 +338,143 @@ export default function LeafletMap() {
 
   return (
     <div className="flex h-[calc(100vh-56px)] flex-col">
-      {/* Top bar: filters + route */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-[#2a2a2a] bg-[#1e1e1e] p-3">
-        <select
-          className="rounded-lg bg-[#121212] px-2 py-1 text-xs text-[#ededed] border border-[#2a2a2a]"
-          value={filters.connector}
-          onChange={(e) => setFilters((f) => ({ ...f, connector: e.target.value }))}
-        >
-          <option value="">All Connectors</option>
-          <option value="J1772">J1772</option>
-          <option value="CCS">CCS</option>
-          <option value="CHAdeMO">CHAdeMO</option>
-          <option value="Tesla">Tesla</option>
-        </select>
-        <select
-          className="rounded-lg bg-[#121212] px-2 py-1 text-xs text-[#ededed] border border-[#2a2a2a]"
-          value={filters.minPower}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, minPower: Number(e.target.value) }))
-          }
-        >
-          <option value={0}>Any Speed</option>
-          <option value={50}>{`>= 50 kW`}</option>
-          <option value={100}>{`>= 100 kW`}</option>
-          <option value={150}>{`>= 150 kW`}</option>
-        </select>
-        <label className="flex items-center gap-1 text-xs text-[#a0a0a0]">
-          <input
-            type="checkbox"
-            checked={filters.freeOnly}
-            onChange={(e) => setFilters((f) => ({ ...f, freeOnly: e.target.checked }))}
-          />
-          Free only
-        </label>
-        <select
-          className="rounded-lg bg-[#121212] px-2 py-1 text-xs text-[#ededed] border border-[#2a2a2a]"
-          value={filters.distance}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, distance: Number(e.target.value) }))
-          }
-        >
-          <option value={5}>5 km</option>
-          <option value={10}>10 km</option>
-          <option value={25}>25 km</option>
-          <option value={50}>50 km</option>
-        </select>
-        <div className="ml-auto flex items-center gap-2">
-          <input
-            placeholder="From (lat,lng)"
-            className="w-28 rounded-lg bg-[#121212] px-2 py-1 text-xs text-[#ededed] border border-[#2a2a2a]"
-            onBlur={(e) => {
-              const [lat, lng] = e.target.value.split(",").map(Number);
-              if (!isNaN(lat) && !isNaN(lng))
-                setRoutePoints((r) => ({
-                  ...r,
-                  from: { lat, lng, name: "From" },
-                }));
-            }}
-          />
-          <input
-            placeholder="To (lat,lng)"
-            className="w-28 rounded-lg bg-[#121212] px-2 py-1 text-xs text-[#ededed] border border-[#2a2a2a]"
-            onBlur={(e) => {
-              const [lat, lng] = e.target.value.split(",").map(Number);
-              if (!isNaN(lat) && !isNaN(lng))
-                setRoutePoints((r) => ({
-                  ...r,
-                  to: { lat, lng, name: "To" },
-                }));
-            }}
-          />
-          <button
-            onClick={() => {
-              setRoutePoints({ from: null, to: null });
-            }}
-            className="rounded-lg bg-[#2a2a2a] px-2 py-1 text-xs text-[#ededed]"
+      {/* Weather alerts */}
+      {weatherAlerts.length > 0 && (
+        <div className="flex items-center gap-2 border-b border-[#2a2a2a] bg-[#FFD600]/10 px-4 py-2 text-xs text-[#FFD600]">
+          <span className="font-bold">Weather Alert:</span>
+          <span className="truncate">{weatherAlerts[0].headline}</span>
+        </div>
+      )}
+
+      {/* Top bar */}
+      <div className="flex flex-col gap-2 border-b border-[#2a2a2a] bg-[#1e1e1e] p-3">
+        <SearchBar onSelect={handleSearchSelect} className="max-w-md" />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            className="rounded-lg bg-[#121212] px-2 py-1 text-xs text-[#ededed] border border-[#2a2a2a]"
+            value={filters.connector}
+            onChange={(e) => setFilters((f) => ({ ...f, connector: e.target.value }))}
           >
-            Clear
-          </button>
+            <option value="">All Connectors</option>
+            <option value="J1772">J1772</option>
+            <option value="CCS">CCS</option>
+            <option value="CHAdeMO">CHAdeMO</option>
+            <option value="Tesla">Tesla</option>
+          </select>
+          <select
+            className="rounded-lg bg-[#121212] px-2 py-1 text-xs text-[#ededed] border border-[#2a2a2a]"
+            value={filters.minPower}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, minPower: Number(e.target.value) }))
+            }
+          >
+            <option value={0}>Any Speed</option>
+            <option value={50}>{`>= 50 kW`}</option>
+            <option value={100}>{`>= 100 kW`}</option>
+            <option value={150}>{`>= 150 kW`}</option>
+          </select>
+          <label className="flex items-center gap-1 text-xs text-[#a0a0a0]">
+            <input
+              type="checkbox"
+              checked={filters.freeOnly}
+              onChange={(e) => setFilters((f) => ({ ...f, freeOnly: e.target.checked }))}
+            />
+            Free only
+          </label>
+          <select
+            className="rounded-lg bg-[#121212] px-2 py-1 text-xs text-[#ededed] border border-[#2a2a2a]"
+            value={filters.distance}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, distance: Number(e.target.value) }))
+            }
+          >
+            <option value={5}>5 km</option>
+            <option value={10}>10 km</option>
+            <option value={25}>25 km</option>
+            <option value={50}>50 km</option>
+          </select>
+
+          {/* Route planner */}
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (center) setRouteFrom({ lat: center[0], lng: center[1], name: "Current Location" });
+              }}
+              className={`rounded-lg px-2 py-1 text-xs border ${routeFrom ? "border-[#4CAF50] text-[#4CAF50]" : "border-[#2a2a2a] text-[#ededed]"}`}
+            >
+              {routeFrom ? "From Set" : "Set From"}
+            </button>
+            <button
+              onClick={() => {
+                if (center) setRouteTo({ lat: center[0], lng: center[1], name: "Current Location" });
+              }}
+              className={`rounded-lg px-2 py-1 text-xs border ${routeTo ? "border-[#FFD600] text-[#FFD600]" : "border-[#2a2a2a] text-[#ededed]"}`}
+            >
+              {routeTo ? "To Set" : "Set To"}
+            </button>
+            <button
+              onClick={planRoute}
+              disabled={!routeFrom || !routeTo || routeLoading}
+              className="rounded-lg bg-[#4CAF50] px-3 py-1 text-xs font-bold text-[#121212] disabled:opacity-50"
+            >
+              {routeLoading ? "Planning..." : "Plan Route"}
+            </button>
+            <button
+              onClick={clearRoute}
+              className="rounded-lg bg-[#2a2a2a] px-2 py-1 text-xs text-[#ededed]"
+            >
+              Clear
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Carbon panel */}
-      {carbonSaved > 0 && (
-        <div className="flex items-center justify-between bg-[#1e1e1e] px-4 py-2 text-sm text-[#4CAF50]">
-          <span>
-            This trip saved <strong>{carbonSaved.toFixed(2)} kg CO₂</strong>
-          </span>
-          <span className="text-xs text-[#737373]">
-            {routeStations.length} chargers near route
-          </span>
+      {/* Route summary */}
+      {routeResult && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#2a2a2a] bg-[#1e1e1e] px-4 py-2 text-sm">
+          <div className="flex items-center gap-3">
+            <span className="text-[#4CAF50]">
+              {(routeResult.route.distanceM / 1000).toFixed(1)} km
+            </span>
+            <span className="text-[#a0a0a0]">
+              {Math.round(routeResult.route.durationSec / 60)} min
+            </span>
+            <span className="text-[#4CAF50]">
+              {((routeResult.route.distanceM / 1000) * 0.12).toFixed(2)} kg CO₂ saved
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className="rounded-full px-2 py-0.5 text-xs font-bold"
+              style={{
+                background:
+                  routeResult.safetyScore >= 80
+                    ? "rgba(76,175,80,0.2)"
+                    : routeResult.safetyScore >= 50
+                    ? "rgba(255,214,0,0.2)"
+                    : "rgba(244,67,54,0.2)",
+                color:
+                  routeResult.safetyScore >= 80
+                    ? "#4CAF50"
+                    : routeResult.safetyScore >= 50
+                    ? "#FFD600"
+                    : "#F44336",
+              }}
+            >
+              Safety: {Math.round(routeResult.safetyScore)}%
+            </span>
+            {routeResult.nightModeActive && (
+              <span className="rounded-full bg-[#1E1E1E] px-2 py-0.5 text-xs text-[#a0a0a0]">
+                Night Mode
+              </span>
+            )}
+          </div>
+          {routeResult.warnings.length > 0 && (
+            <div className="w-full text-xs text-[#F44336]">
+              {routeResult.warnings.join(" ")}
+            </div>
+          )}
         </div>
       )}
 
@@ -271,85 +491,54 @@ export default function LeafletMap() {
             attribution='&copy; <a href="https://osm.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+
           {filteredStations.map((s) => (
-            <Marker key={s.id} position={[s.lat, s.lng]} icon={evIcon}>
-              <Popup>
-                <div className="min-w-[200px] text-[#ededed]">
-                  <h4 className="font-semibold">{s.name}</h4>
-                  <p className="text-xs text-[#a0a0a0]">{s.address}</p>
-                  <ul className="mt-2 space-y-1 text-xs">
-                    {s.connectors.map((c, i) => (
-                      <li key={i} className="flex justify-between">
-                        <span>{c.type}</span>
-                        <span className="text-[#4CAF50]">{c.powerKW} kW</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="mt-3 flex gap-2">
-                    {user ? (
-                      <button
-                        onClick={async () => {
-                          const status = prompt("Status? (available/busy/broken)");
-                          const rating = prompt("Rating 1-5?");
-                          if (status && rating) {
-                            await supabase.from("checkins").insert({
-                              station_id: s.id,
-                              user_id: user.id,
-                              status,
-                              rating: Number(rating),
-                            });
-                            alert("Check-in saved!");
-                          }
-                        }}
-                        className="rounded bg-[#4CAF50] px-2 py-1 text-xs font-bold text-[#121212]"
-                      >
-                        Check In
-                      </button>
-                    ) : (
-                      <span className="text-[10px] text-[#737373]">
-                        Sign in to check in
-                      </span>
-                    )}
-                    <button
-                      onClick={handleBoostCheckout}
-                      className="rounded bg-[#FFD600] px-2 py-1 text-xs font-bold text-[#121212]"
-                    >
-                      Boost $2.99
-                    </button>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
+            <Marker
+              key={s.id}
+              position={[s.lat, s.lng]}
+              icon={evIcon}
+              eventHandlers={{
+                click: () => handleStationClick(s),
+              }}
+            />
           ))}
-          {routeLine && (
-            <>
-              <Polyline positions={routeLine} color="#4CAF50" weight={4} />
-              {routePoints.from && (
-                <Circle
-                  center={[routePoints.from.lat, routePoints.from.lng]}
-                  radius={200}
-                  pathOptions={{ color: "#4CAF50", fillColor: "#4CAF50" }}
-                />
-              )}
-              {routePoints.to && (
-                <Circle
-                  center={[routePoints.to.lat, routePoints.to.lng]}
-                  radius={200}
-                  pathOptions={{ color: "#4CAF50", fillColor: "#4CAF50" }}
-                />
-              )}
-            </>
+
+          {routeFrom && (
+            <Marker position={[routeFrom.lat, routeFrom.lng]} icon={routeStartIcon} />
           )}
+          {routeTo && (
+            <Marker position={[routeTo.lat, routeTo.lng]} icon={routeEndIcon} />
+          )}
+
+          {routeGeometry && (
+            <Polyline
+              positions={routeGeometry}
+              color="#4CAF50"
+              weight={4}
+              opacity={0.9}
+            />
+          )}
+
+          {routeChargers.map((s) => (
+            <Circle
+              key={`route-${s.id}`}
+              center={[s.lat, s.lng]}
+              radius={300}
+              pathOptions={{ color: "#FFD600", fillColor: "#FFD600", fillOpacity: 0.15 }}
+            />
+          ))}
         </MapContainer>
 
-        {/* Loading / Error overlays */}
+        {/* Loading overlay */}
         {loading && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="rounded-xl bg-[#1e1e1e]/90 px-4 py-2 text-sm text-[#ededed] shadow-lg">
-              Loading chargers...
-            </div>
+          <div className="pointer-events-none absolute inset-0 z-[1000] flex flex-col items-center justify-center gap-3 bg-[#121212]/60">
+            <Skeleton variant="card" className="w-64 h-24" />
+            <Skeleton variant="card" className="w-64 h-24" />
+            <p className="text-sm text-[#ededed]">Loading chargers...</p>
           </div>
         )}
+
+        {/* Error banner */}
         {error && (
           <div className="absolute bottom-4 left-1/2 z-[1000] w-[90%] max-w-md -translate-x-1/2 rounded-xl bg-[#F44336]/90 px-4 py-3 text-sm text-white shadow-lg">
             <p className="font-semibold">{error}</p>
@@ -368,6 +557,148 @@ export default function LeafletMap() {
             )}
           </div>
         )}
+      </div>
+
+      {/* Bottom Sheet — Station Details */}
+      <BottomSheet
+        isOpen={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={selectedStation?.name}
+        initialSnap="half"
+      >
+        {selectedStation && (
+          <StationDetailContent
+            station={selectedStation}
+            user={user}
+            isFav={favorites.has(selectedStation.id)}
+            onToggleFavorite={() => toggleFavorite(selectedStation)}
+            onCheckin={() => {
+              setSheetOpen(false);
+              handleCheckinClick(selectedStation);
+            }}
+            onBoost={handleBoostCheckout}
+          />
+        )}
+      </BottomSheet>
+
+      {/* Check-in Modal */}
+      <CheckinModal
+        isOpen={checkinOpen}
+        onClose={() => setCheckinOpen(false)}
+        onSubmit={handleCheckinSubmit}
+        stationName={checkinStation?.name}
+      />
+    </div>
+  );
+}
+
+function StationDetailContent({
+  station,
+  user,
+  isFav,
+  onToggleFavorite,
+  onCheckin,
+  onBoost,
+}: {
+  station: EVStation;
+  user: { id: string; email?: string } | null;
+  isFav: boolean;
+  onToggleFavorite: () => void;
+  onCheckin: () => void;
+  onBoost: () => void;
+}) {
+  const [crime, setCrime] = useState<{ score: number; label: "Safe" | "Caution" | "Avoid" } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCrimeScore(station.lat, station.lng).then((c) => {
+      if (!cancelled) setCrime(c);
+    });
+    return () => { cancelled = true; };
+  }, [station.lat, station.lng]);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-[#a0a0a0]">{station.address}</p>
+
+      {/* Crime risk badge */}
+      {crime && (
+        <div
+          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold"
+          style={{
+            background: `${getRiskColor(crime.label)}20`,
+            color: getRiskColor(crime.label),
+          }}
+        >
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ background: getRiskColor(crime.label) }}
+          />
+          {crime.label}
+        </div>
+      )}
+
+      {/* Connectors */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-[#737373]">
+          Connectors
+        </p>
+        {station.connectors.map((c, i) => (
+          <div
+            key={i}
+            className="flex items-center justify-between rounded-lg border border-[#2a2a2a] bg-[#121212] px-3 py-2"
+          >
+            <span className="text-sm text-[#ededed]">{c.type}</span>
+            <span className="text-sm font-medium text-[#4CAF50]">{c.powerKW} kW</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Photos */}
+      {station.photos && station.photos.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {station.photos.map((url, i) => (
+            <img
+              key={i}
+              src={url}
+              alt={`Station photo ${i + 1}`}
+              className="h-24 w-24 shrink-0 rounded-lg object-cover"
+              loading="lazy"
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex flex-wrap gap-2 pt-2">
+        <button
+          onClick={onToggleFavorite}
+          className={`inline-flex min-h-[40px] items-center gap-1 rounded-lg px-3 py-2 text-xs font-medium transition ${
+            isFav
+              ? "bg-[#FFD600]/20 text-[#FFD600]"
+              : "bg-[#2a2a2a] text-[#ededed] hover:bg-[#3a3a3a]"
+          }`}
+        >
+          {isFav ? "★ Saved" : "☆ Save"}
+        </button>
+        {user ? (
+          <button
+            onClick={onCheckin}
+            className="inline-flex min-h-[40px] items-center rounded-lg bg-[#4CAF50] px-3 py-2 text-xs font-bold text-[#121212] transition hover:bg-[#43a047]"
+          >
+            Check In
+          </button>
+        ) : (
+          <span className="inline-flex min-h-[40px] items-center text-xs text-[#737373]">
+            Sign in to check in
+          </span>
+        )}
+        <button
+          onClick={onBoost}
+          className="inline-flex min-h-[40px] items-center rounded-lg bg-[#FFD600] px-3 py-2 text-xs font-bold text-[#121212] transition hover:bg-[#e6c200]"
+        >
+          Boost $2.99
+        </button>
       </div>
     </div>
   );

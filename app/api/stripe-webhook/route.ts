@@ -34,15 +34,26 @@ export async function POST(req: NextRequest) {
     const session = event.data.object as Stripe.Checkout.Session;
     const userId = session.metadata?.userId;
     const customerId = session.customer as string;
+    const paymentIntentId = session.payment_intent as string;
 
-    if (userId) {
+    if (userId && paymentIntentId) {
+      const { data: existing } = await supabase
+        .from("subscriptions")
+        .select("id")
+        .eq("stripe_payment_intent_id", paymentIntentId)
+        .maybeSingle();
+
+      if (existing) {
+        return NextResponse.json({ received: true, idempotent: true });
+      }
+
       await supabase
         .from("subscriptions")
         .upsert(
           {
             user_id: userId,
             stripe_customer_id: customerId,
-            stripe_payment_intent_id: session.payment_intent as string,
+            stripe_payment_intent_id: paymentIntentId,
             status: "completed",
           },
           { onConflict: "user_id" }

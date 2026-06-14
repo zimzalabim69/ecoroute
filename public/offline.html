@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoRoute — Offline</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #121212;
+      color: #ededed;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .banner {
+      width: 100%;
+      background: #1e1e1e;
+      border-bottom: 1px solid #2a2a2a;
+      text-align: center;
+      padding: 12px;
+      font-size: 14px;
+      color: #a0a0a0;
+    }
+    .banner strong {
+      color: #4CAF50;
+    }
+    .content {
+      max-width: 600px;
+      width: 100%;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 16px;
+    }
+    .station {
+      background: #1e1e1e;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+    }
+    .station-name {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .station-addr {
+      font-size: 12px;
+      color: #a0a0a0;
+      margin-top: 4px;
+    }
+    .empty {
+      text-align: center;
+      color: #737373;
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+  <div class="banner"><strong>Offline Mode</strong> — Showing cached stations</div>
+  <div class="content">
+    <h1>Cached Stations</h1>
+    <div id="stations"></div>
+  </div>
+  <script>
+    async function loadCachedStations() {
+      const container = document.getElementById('stations');
+      try {
+        const cache = await caches.open('ecoroute-ocm-v2');
+        const requests = await cache.keys();
+        const stations = [];
+        for (const request of requests) {
+          const response = await cache.match(request);
+          if (!response) continue;
+          try {
+            const data = await response.clone().json();
+            if (Array.isArray(data)) {
+              for (const item of data) {
+                if (item.addressInfo) {
+                  stations.push({
+                    name: item.addressInfo.title || 'Unnamed Station',
+                    address: [item.addressInfo.addressLine1, item.addressInfo.town, item.addressInfo.stateOrProvince].filter(Boolean).join(', '),
+                  });
+                }
+              }
+            }
+          } catch (e) {
+            // ignore non-JSON entries
+          }
+        }
+        if (stations.length === 0) {
+          container.innerHTML = '<div class="empty">No cached stations available.</div>';
+          return;
+        }
+        // dedupe by name
+        const seen = new Set();
+        const html = stations
+          .filter((s) => {
+            if (seen.has(s.name)) return false;
+            seen.add(s.name);
+            return true;
+          })
+          .slice(0, 50)
+          .map((s) => `<div class="station"><div class="station-name">${s.name}</div><div class="station-addr">${s.address}</div></div>`)
+          .join('');
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = '<div class="empty">Failed to load cached stations.</div>';
+      }
+    }
+    loadCachedStations();
+  </script>
+</body>
+</html>
