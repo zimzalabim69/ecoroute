@@ -351,8 +351,21 @@ export default function LeafletMap() {
           </div>
         )}
         {error && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-xl bg-[#F44336]/90 px-4 py-2 text-sm text-white shadow-lg">
-            {error}
+          <div className="absolute bottom-4 left-1/2 z-[1000] w-[90%] max-w-md -translate-x-1/2 rounded-xl bg-[#F44336]/90 px-4 py-3 text-sm text-white shadow-lg">
+            <p className="font-semibold">{error}</p>
+            {error.includes("OCM_API_KEY") && (
+              <p className="mt-1 text-xs">
+                Get a free key at{" "}
+                <a
+                  href="https://openchargemap.org/site/develop#api"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  openchargemap.org
+                </a>
+              </p>
+            )}
           </div>
         )}
       </div>

@@ -1,31 +1,24 @@
 import { EVStation } from "@/types";
 
-const OCM_BASE = "https://api.openchargemap.io/v3/poi";
-
 export async function fetchStations(
   lat: number,
   lng: number,
   distanceKm: number = 10
 ): Promise<EVStation[]> {
-  const url = new URL(OCM_BASE);
-  url.searchParams.set("latitude", lat.toString());
-  url.searchParams.set("longitude", lng.toString());
+  const url = new URL("/api/ocm", window.location.origin);
+  url.searchParams.set("lat", lat.toString());
+  url.searchParams.set("lng", lng.toString());
   url.searchParams.set("distance", distanceKm.toString());
-  url.searchParams.set("distanceunit", "KM");
-  url.searchParams.set("maxresults", "200");
-  url.searchParams.set("compact", "true");
-  url.searchParams.set("verbose", "false");
-  url.searchParams.set("includecomments", "false");
-  url.searchParams.set("camelcase", "true");
-  const key = process.env.NEXT_PUBLIC_OCM_API_KEY;
-  if (key) url.searchParams.set("key", key);
 
   const res = await fetch(url.toString(), {
     headers: { "Content-Type": "application/json" },
   });
-  if (!res.ok) throw new Error(`OCM fetch failed: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Station fetch failed: ${res.status}`);
+  }
 
-  const data = await res.json();
+  const data = (await res.json()) as Record<string, unknown>[];
   return data.map(parseStation).filter(Boolean) as EVStation[];
 }
 
