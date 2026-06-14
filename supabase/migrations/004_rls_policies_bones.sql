@@ -13,8 +13,8 @@
 -- If you need admin dashboards, either:
 --   (a) Use service_role_key in an Edge Function (no policy needed), or
 --   (b) Create an "admin" column on profiles and check it in the policy.
--- UNCOMMENT TO ACTIVATE (option b — admin flag approach):
--- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
+-- NOTE: `is_admin` column already added in 001_initial_schema.sql.
+-- UNCOMMENT TO ACTIVATE (admin flag approach):
 -- CREATE POLICY "Admins can read all profiles"
 --   ON profiles FOR SELECT USING (auth.uid() IN (
 --     SELECT id FROM profiles WHERE is_admin = true
@@ -79,6 +79,21 @@
 -- UNCOMMENT TO ACTIVATE:
 -- CREATE POLICY "Users cannot delete subscriptions"
 --   ON subscriptions FOR DELETE USING (false);
+
+-- ============================================================
+-- OPTIONAL HELPER FUNCTION (for cleaner Edge Function checks)
+-- ============================================================
+
+-- UNCOMMENT TO ACTIVATE: A helper to detect service role context in SQL.
+-- This is rarely needed because Edge Functions using service_role_key
+-- bypass RLS entirely. But it can be useful for audit logging.
+--
+-- CREATE OR REPLACE FUNCTION public.is_service_role()
+-- RETURNS BOOLEAN AS $$
+-- BEGIN
+--   RETURN current_setting('request.jwt.claims', true)::json->>'role' = 'service_role';
+-- END;
+-- $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ============================================================
 -- FUTURE TABLES (create when needed)

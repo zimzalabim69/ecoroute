@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   subscription_tier TEXT DEFAULT 'free' CHECK (subscription_tier IN ('free', 'boost')),
+  is_admin BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -89,8 +90,12 @@ CREATE POLICY "Users can read own subscriptions"
 CREATE POLICY "Users can insert own subscriptions"
   ON subscriptions FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Service role can update subscriptions"
-  ON subscriptions FOR UPDATE USING (true);
+-- NOTE: Service role key bypasses RLS entirely. No policy needed for service role.
+-- The policy below restricts update to the subscription owner only.
+-- If you need service role updates (e.g., from Stripe webhook Edge Function),
+-- use service_role_key — it bypasses RLS without needing this policy.
+CREATE POLICY "Users can update own subscriptions"
+  ON subscriptions FOR UPDATE USING (auth.uid() = user_id);
 
 -- Trigger to create profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
