@@ -90,12 +90,91 @@ git check-ignore .env.local  # Should output: .env.local
 
 ---
 
-## One-Line Activation (After All Logins)
+## Safer Step-by-Step Activation (Recommended)
+
+> Run each block, verify output, then proceed. Do NOT chain everything.
+
+### Block 1: Supabase (Safe — schema push)
 
 ```powershell
-# Copy-paste this entire block after completing supabase login + vercel login + stripe login:
+cd 'C:\Users\sikke\Projects\web\ecoroute (Next.js)'
+supabase link --project-ref dwxulsayhrzeelkfyiqj
+supabase db push
+# VERIFY: Check Supabase Dashboard → Table Editor → confirm tables exist
+supabase functions deploy
+# VERIFY: Dashboard → Edge Functions → confirm 2 functions listed
+```
 
-supabase link --project-ref dwxulsayhrzeelkfyiqj ; `n  supabase db push ; `n  supabase functions deploy ; `n  vercel link ; `n  vercel env add NEXT_PUBLIC_SUPABASE_URL ; `n  vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY ; `n  vercel env add SUPABASE_SERVICE_ROLE_KEY ; `n  vercel env add STRIPE_SECRET_KEY ; `n  vercel env add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ; `n  vercel env add STRIPE_WEBHOOK_SECRET ; `n  vercel ; `n  vercel --prod
+**Pause. Verify tables and Edge Functions in Supabase Dashboard before continuing.**
+
+### Block 2: Vercel Link + Env Vars (Safe — no deploy yet)
+
+```powershell
+vercel link
+# VERIFY: .vercel/project.json created
+
+vercel env add NEXT_PUBLIC_SUPABASE_URL
+vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
+vercel env add SUPABASE_SERVICE_ROLE_KEY
+# VERIFY: Dashboard → Project → Environment Variables → confirm 3 vars
+```
+
+**Pause. Verify env vars in Vercel Dashboard before continuing.**
+
+### Block 3: Vercel Preview Deploy (Safe — not production)
+
+```powershell
+vercel
+# VERIFY: Preview URL loads without 500 errors
+# VERIFY: `https://<preview-url>/manifest.json` loads
+# VERIFY: `https://<preview-url>/sw.js` loads
+```
+
+**Pause. Test the preview URL in a browser. Confirm the app renders.**
+
+### Block 4: Stripe Test Setup (Safe — test mode only)
+
+```powershell
+stripe login
+stripe products create --name "EcoRoute Boost" --description "One-time route boost unlock"
+# Capture product ID from output
+
+stripe prices create --product <product-id> --unit-amount 299 --currency usd
+# Capture price ID from output
+
+stripe webhook_endpoints create `
+  --url "https://<preview-url>/api/stripe-webhook" `
+  --enabled-events "checkout.session.completed"
+# Capture webhook secret from output
+```
+
+**Pause. Add Stripe env vars to Vercel preview before continuing.**
+
+```powershell
+vercel env add STRIPE_SECRET_KEY
+vercel env add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+vercel env add STRIPE_WEBHOOK_SECRET
+vercel  # Redeploy preview with Stripe vars
+```
+
+**Pause. Test Stripe checkout on preview URL with card `4242 4242 4242 4242`.**
+
+### Block 5: Production Deploy (IRREVERSIBLE — requires explicit approval)
+
+```powershell
+# ONLY RUN THIS AFTER preview checkout test succeeds:
+vercel --prod
+```
+
+**If anything fails in Blocks 1-4, do NOT run Block 5.**
+
+---
+
+## One-Line Activation (Advanced / Risky — Not Recommended)
+
+```powershell
+# WARNING: Chains everything without pause. Use only if you are 100% confident.
+# supabase link --project-ref dwxulsayhrzeelkfyiqj ; supabase db push ; supabase functions deploy ; vercel link ; vercel env add NEXT_PUBLIC_SUPABASE_URL ; vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY ; vercel env add SUPABASE_SERVICE_ROLE_KEY ; vercel env add STRIPE_SECRET_KEY ; vercel env add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ; vercel env add STRIPE_WEBHOOK_SECRET ; vercel ; vercel --prod
 ```
 
 ---

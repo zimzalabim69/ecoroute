@@ -7,11 +7,18 @@
 -- ENHANCED PROFILES POLICIES
 -- ============================================================
 
--- Allow service role to read all profiles (for admin dashboards)
--- UNCOMMENT TO ACTIVATE:
--- CREATE POLICY "Service role can read all profiles"
---   ON profiles FOR SELECT USING (true);
--- NOTE: This bypasses RLS. Only use for admin Edge Functions with service_role_key.
+-- NOTE: Service role (supabase service_role_key) BYPASSES RLS entirely.
+-- No policy is needed for service role access. Do NOT create a policy with USING (true)
+-- because that would allow ANY authenticated user to read all profiles.
+-- If you need admin dashboards, either:
+--   (a) Use service_role_key in an Edge Function (no policy needed), or
+--   (b) Create an "admin" column on profiles and check it in the policy.
+-- UNCOMMENT TO ACTIVATE (option b — admin flag approach):
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
+-- CREATE POLICY "Admins can read all profiles"
+--   ON profiles FOR SELECT USING (auth.uid() IN (
+--     SELECT id FROM profiles WHERE is_admin = true
+--   ));
 
 -- Allow users to delete own profile (GDPR right to be forgotten)
 -- UNCOMMENT TO ACTIVATE:
@@ -25,10 +32,13 @@
 -- Allow public read on checkins (already active from 001_initial_schema.sql)
 -- This is the community-driven layer: anyone can see charger statuses.
 
--- Allow service role to update any checkin (for moderation)
--- UNCOMMENT TO ACTIVATE:
--- CREATE POLICY "Service role can moderate checkins"
---   ON checkins FOR UPDATE USING (true);
+-- NOTE: Service role bypasses RLS. No policy needed for Edge Function moderation.
+-- If you need in-app moderation by admins, use the admin flag approach above.
+-- UNCOMMENT TO ACTIVATE (admin moderation via app):
+-- CREATE POLICY "Admins can moderate checkins"
+--   ON checkins FOR UPDATE USING (auth.uid() IN (
+--     SELECT id FROM profiles WHERE is_admin = true
+--   ));
 
 -- ============================================================
 -- ENHANCED FAVORITES POLICIES
@@ -36,10 +46,13 @@
 
 -- Already active from 002_favorites_trips.sql: "Users can CRUD own favorites"
 
--- Allow service role to read favorites (for recommendation engine)
--- UNCOMMENT TO ACTIVATE:
--- CREATE POLICY "Service role can read favorites for analytics"
---   ON favorites FOR SELECT USING (true);
+-- NOTE: Service role bypasses RLS. For analytics, run a scheduled Edge Function
+-- with service_role_key. Do NOT create a wide-open SELECT policy.
+-- UNCOMMENT TO ACTIVATE (analytics via admin access only):
+-- CREATE POLICY "Admins can read favorites for analytics"
+--   ON favorites FOR SELECT USING (auth.uid() IN (
+--     SELECT id FROM profiles WHERE is_admin = true
+--   ));
 
 -- ============================================================
 -- ENHANCED TRIP_HISTORY POLICIES
