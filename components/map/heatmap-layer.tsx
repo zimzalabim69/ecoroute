@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMap } from "react-leaflet";
 import L from "leaflet";
 import { computeCrimeRisk } from "@/lib/crime-heuristic";
@@ -13,8 +13,7 @@ interface HeatmapLayerProps {
 function drawHeatmap(
   canvas: HTMLCanvasElement,
   map: L.Map,
-  centerLat: number,
-  centerLng: number
+  cityCenter: [number, number]
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -33,8 +32,8 @@ function drawHeatmap(
   const latRange = north - south;
   const lngRange = east - west;
 
-  // Dense grid: 30x30 cells across the visible area
-  const cols = 30;
+  // Dense grid: 40x40 cells across the visible area
+  const cols = 40;
   const rows = Math.round(cols * (canvas.height / canvas.width));
   const latStep = latRange / rows;
   const lngStep = lngRange / cols;
@@ -43,15 +42,15 @@ function drawHeatmap(
     for (let c = 0; c < cols; c++) {
       const lat = south + r * latStep + latStep / 2;
       const lng = west + c * lngStep + lngStep / 2;
-      const { score } = computeCrimeRisk(lat, lng, centerLat, centerLng);
+      const { score } = computeCrimeRisk(lat, lng, cityCenter[0], cityCenter[1]);
 
       // Only draw heat for non-safe areas
       if (score < 30) continue;
 
       const point = map.latLngToContainerPoint([lat, lng]);
       const radius = Math.max(
-        8,
-        Math.min(40, (canvas.width / cols) * 1.5)
+        12,
+        Math.min(60, (canvas.width / cols) * 2)
       );
 
       const gradient = ctx.createRadialGradient(
@@ -63,15 +62,14 @@ function drawHeatmap(
         radius
       );
 
-      // Color based on score: 30-40 transparent, 40-70 yellow, 70-100 red
       const intensity = Math.min(1, (score - 30) / 70);
       if (score >= 70) {
-        gradient.addColorStop(0, `rgba(244, 67, 54, ${intensity * 0.55})`);
-        gradient.addColorStop(0.6, `rgba(244, 67, 54, ${intensity * 0.25})`);
+        gradient.addColorStop(0, `rgba(244, 67, 54, ${intensity * 0.7})`);
+        gradient.addColorStop(0.5, `rgba(244, 67, 54, ${intensity * 0.35})`);
         gradient.addColorStop(1, "rgba(244, 67, 54, 0)");
       } else {
-        gradient.addColorStop(0, `rgba(255, 214, 0, ${intensity * 0.45})`);
-        gradient.addColorStop(0.6, `rgba(255, 214, 0, ${intensity * 0.2})`);
+        gradient.addColorStop(0, `rgba(255, 214, 0, ${intensity * 0.6})`);
+        gradient.addColorStop(0.5, `rgba(255, 214, 0, ${intensity * 0.25})`);
         gradient.addColorStop(1, "rgba(255, 214, 0, 0)");
       }
 
@@ -85,6 +83,8 @@ function drawHeatmap(
 
 export function HeatmapLayer({ center, visible }: HeatmapLayerProps) {
   const map = useMap();
+  // Lock the city center on first mount so it doesn't move when user pans
+  const [cityCenter] = useState<[number, number]>(() => center);
 
   useEffect(() => {
     if (!visible) return;
@@ -97,13 +97,12 @@ export function HeatmapLayer({ center, visible }: HeatmapLayerProps) {
     canvas.style.height = "100%";
     canvas.style.pointerEvents = "none";
     canvas.style.zIndex = "500";
-    canvas.style.mixBlendMode = "screen";
 
     const container = map.getContainer();
     container.appendChild(canvas);
 
     const redraw = () => {
-      drawHeatmap(canvas, map, center[0], center[1]);
+      drawHeatmap(canvas, map, cityCenter);
     };
 
     redraw();
@@ -115,7 +114,7 @@ export function HeatmapLayer({ center, visible }: HeatmapLayerProps) {
         canvas.parentNode.removeChild(canvas);
       }
     };
-  }, [map, center, visible]);
+  }, [map, cityCenter, visible]);
 
   return null;
 }
