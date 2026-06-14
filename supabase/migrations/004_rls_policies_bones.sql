@@ -76,9 +76,8 @@
 -- - "Service role can update subscriptions"
 
 -- Prevent users from deleting subscription records (audit trail)
--- UNCOMMENT TO ACTIVATE:
--- CREATE POLICY "Users cannot delete subscriptions"
---   ON subscriptions FOR DELETE USING (false);
+CREATE POLICY "Users cannot delete subscriptions"
+  ON subscriptions FOR DELETE USING (false);
 
 -- ============================================================
 -- OPTIONAL HELPER FUNCTION (for cleaner Edge Function checks)

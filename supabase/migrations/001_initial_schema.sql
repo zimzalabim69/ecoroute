@@ -64,6 +64,9 @@ CREATE POLICY "Users can update own profile"
   ON profiles FOR UPDATE USING (auth.uid() = id);
 
 -- Checkins policies
+-- SECURITY NOTE: This policy intentionally allows all authenticated users to read checkins.
+-- Checkins are community-driven charger status updates. If you need restricted visibility,
+-- replace USING (true) with an ownership or visibility check (e.g., auth.uid() = user_id).
 CREATE POLICY "Checkins are readable by all"
   ON checkins FOR SELECT USING (true);
 

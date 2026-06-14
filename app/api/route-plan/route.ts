@@ -15,13 +15,26 @@ export async function POST(req: NextRequest) {
     const toLng = body.to?.lng;
 
     if (
-      fromLat === undefined ||
-      fromLng === undefined ||
-      toLat === undefined ||
-      toLng === undefined
+      typeof fromLat !== "number" ||
+      typeof fromLng !== "number" ||
+      typeof toLat !== "number" ||
+      typeof toLng !== "number"
     ) {
       return NextResponse.json(
-        { error: "Missing required fields: from and to with lat/lng" },
+        { error: "Missing required fields: from and to with numeric lat/lng" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      body.avoidPolygons !== undefined &&
+      (!Array.isArray(body.avoidPolygons) ||
+        !body.avoidPolygons.every(
+          (p) => p && typeof p === "object" && Array.isArray(p.coordinates)
+        ))
+    ) {
+      return NextResponse.json(
+        { error: "avoidPolygons must be an array of GeoJSON Polygon objects" },
         { status: 400 }
       );
     }

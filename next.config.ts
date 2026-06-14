@@ -11,17 +11,11 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "api.weather.gov" },
     ],
   },
+  // CORS is intentionally NOT set globally. Same-origin API calls do not require CORS.
+  // If a specific API route needs cross-origin access, handle it in that route's handler
+  // with an explicit allowlist (e.g., `Access-Control-Allow-Origin: https://your-domain.com`).
   async headers() {
-    return [
-      {
-        source: "/api/:path*",
-        headers: [
-          { key: "Access-Control-Allow-Origin", value: "*" },
-          { key: "Access-Control-Allow-Methods", value: "GET,POST,OPTIONS" },
-          { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization" },
-        ],
-      },
-    ];
+    return [];
   },
 };
 
