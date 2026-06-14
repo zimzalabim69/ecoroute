@@ -13,7 +13,7 @@ export function SignInModal({ isOpen, onClose }: SignInModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const { signIn } = useAuth();
+  const { signIn, devSignIn } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -141,6 +141,15 @@ export function SignInModal({ isOpen, onClose }: SignInModalProps) {
                 className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-xl border border-[#2a2a2a] bg-[#121212] px-4 py-2 text-sm font-medium text-[#ededed] transition hover:bg-[#2a2a2a]"
               >
                 Cancel
+              </button>
+            </div>
+            <div className="pt-3 text-center">
+              <button
+                type="button"
+                onClick={() => { devSignIn(); onClose(); }}
+                className="text-xs text-[#737373] underline transition hover:text-[#ededed]"
+              >
+                Dev Login (test mode)
               </button>
             </div>
           </form>

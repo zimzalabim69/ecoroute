@@ -8,12 +8,14 @@ import {
   Polyline,
   Circle,
   useMap,
+  useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { EVStation, SafeRouteResult, WeatherAlert } from "@/types";
 import { fetchStations } from "@/lib/ocm";
 import { fetchCrimeScore, getRiskColor } from "@/lib/crime";
+import { computeCrimeRisk } from "@/lib/crime-heuristic";
 import { useAuth } from "@/components/auth-provider";
 import { useSignIn } from "@/components/sign-in-context";
 import { createClient } from "@/lib/supabase/client";
@@ -65,11 +67,66 @@ const routeEndIcon = new L.DivIcon({
   iconAnchor: [9, 9],
 });
 
-function MapController({ center }: { center: [number, number] }) {
+function SafetyOverlay({ center }: { center: [number, number] }) {
+  const map = useMap();
+  const zoom = map.getZoom();
+  // Generate a sparse grid of crime-risk circles
+  // At zoom 13: ~2km spacing, at zoom 10: ~5km spacing
+  const spacingKm = Math.max(1, 4 - (zoom - 10) * 0.5);
+  const latSpan = spacingKm / 111;
+  const lngSpan = spacingKm / (111 * Math.cos((center[0] * Math.PI) / 180));
+
+  const cells: { lat: number; lng: number; score: number; label: string }[] = [];
+  for (let i = -2; i <= 2; i++) {
+    for (let j = -2; j <= 2; j++) {
+      const lat = center[0] + i * latSpan;
+      const lng = center[1] + j * lngSpan;
+      const { score, label } = computeCrimeRisk(lat, lng, center[0], center[1]);
+      if (label !== "Safe") {
+        cells.push({ lat, lng, score, label });
+      }
+    }
+  }
+
+  return (
+    <>
+      {cells.map((cell, idx) => (
+        <Circle
+          key={`safety-${idx}`}
+          center={[cell.lat, cell.lng]}
+          radius={spacingKm * 500}
+          pathOptions={{
+            color: getRiskColor(cell.label as "Safe" | "Caution" | "Avoid"),
+            fillColor: getRiskColor(cell.label as "Safe" | "Caution" | "Avoid"),
+            fillOpacity: 0.08,
+            weight: 1,
+            opacity: 0.3,
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+function MapController({
+  center,
+  onMoveEnd,
+}: {
+  center: [number, number];
+  onMoveEnd?: (lat: number, lng: number) => void;
+}) {
   const map = useMap();
   useEffect(() => {
     map.setView(center, map.getZoom());
   }, [center, map]);
+
+  useMapEvents({
+    moveend: () => {
+      const c = map.getCenter();
+      onMoveEnd?.(c.lat, c.lng);
+    },
+  });
+
   return null;
 }
 
@@ -107,6 +164,9 @@ export default function LeafletMap() {
 
   // Favorites
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
+
+  // Safety overlay toggle
+  const [showSafetyOverlay, setShowSafetyOverlay] = useState(false);
 
   const { user } = useAuth();
   const { openSignIn } = useSignIn();
@@ -405,6 +465,17 @@ export default function LeafletMap() {
             <option value={25}>25 km</option>
             <option value={50}>50 km</option>
           </select>
+          <button
+            onClick={() => setShowSafetyOverlay((v) => !v)}
+            className={`rounded-lg px-2 py-1 text-xs border transition ${
+              showSafetyOverlay
+                ? "border-[#F44336] text-[#F44336]"
+                : "border-[#2a2a2a] text-[#a0a0a0] hover:text-[#ededed]"
+            }`}
+            title="Toggle safety risk overlay"
+          >
+            {showSafetyOverlay ? "☠ Hide Risk" : "☠ Show Risk"}
+          </button>
 
           {/* Route planner */}
           <div className="ml-auto flex items-center gap-2">
@@ -515,7 +586,7 @@ export default function LeafletMap() {
           className="h-full w-full"
           style={{ background: "#121212" }}
         >
-          <MapController center={center} />
+          <MapController center={center} onMoveEnd={(lat, lng) => setCenter([lat, lng])} />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -556,6 +627,8 @@ export default function LeafletMap() {
               pathOptions={{ color: "#FFD600", fillColor: "#FFD600", fillOpacity: 0.15 }}
             />
           ))}
+
+          {showSafetyOverlay && <SafetyOverlay center={center} />}
         </MapContainer>
 
         {/* Loading overlay */}
