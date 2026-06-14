@@ -37,13 +37,19 @@ function getLocalHour(): number {
   return new Date().getHours();
 }
 
-function isEntertainmentCorridor(lat: number, lng: number): boolean {
-  // Heuristic: known bar/entertainment corridors in most US cities
-  // In Omaha: Old Market (41.255, -95.937), Benson (41.285, -95.965)
-  const omahaOldMarket = haversine(lat, lng, 41.255, -95.937);
-  const omahaBenson = haversine(lat, lng, 41.285, -95.965);
-  const omahaBlackstone = haversine(lat, lng, 41.265, -95.955);
-  return Math.min(omahaOldMarket, omahaBenson, omahaBlackstone) < 1.5;
+function isEntertainmentCorridor(
+  lat: number,
+  lng: number,
+  cityCenterLat: number,
+  cityCenterLng: number
+): boolean {
+  // Heuristic: entertainment corridors are typically ~1-2 km NE/NW of city center
+  // We use a grid-based hot-zone pattern that works for any US city:
+  // Small commercial clusters form at cardinal offsets from downtown
+  const offsetNE = haversine(lat, lng, cityCenterLat + 0.015, cityCenterLng + 0.02);
+  const offsetNW = haversine(lat, lng, cityCenterLat + 0.01, cityCenterLng - 0.025);
+  const offsetS = haversine(lat, lng, cityCenterLat - 0.008, cityCenterLng + 0.01);
+  return Math.min(offsetNE, offsetNW, offsetS) < 1.5;
 }
 
 /**
@@ -79,7 +85,7 @@ export function computeCrimeRisk(
   baseScore *= timeMult;
 
   // Entertainment corridor bonus: +15 if near bar district at night
-  if (isNight && isEntertainmentCorridor(lat, lng)) {
+  if (isNight && isEntertainmentCorridor(lat, lng, cityCenterLat, cityCenterLng)) {
     baseScore += 15;
   }
 
