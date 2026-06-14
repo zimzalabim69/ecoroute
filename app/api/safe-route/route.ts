@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SafeRouteResult, RoutePlanResult } from "@/types";
+import { computeCrimeRisk } from "@/lib/crime-heuristic";
 
 function isNightMode(): boolean {
   const hour = new Date().getHours();
@@ -50,21 +51,9 @@ export async function POST(req: NextRequest) {
     }
     const routePlan = (await routeRes.json()) as RoutePlanResult;
 
-    // 2. Sample points and fetch crime scores
+    // 2. Sample points and compute crime scores locally (zero API calls)
     const samples = samplePointsAlongRoute(routePlan.geometry, 10);
-    const crimeScores = await Promise.all(
-      samples.map(async ([lng, lat]) => {
-        try {
-          const res = await fetch(
-            `${req.nextUrl.origin}/api/crime?lat=${lat}&lng=${lng}`
-          );
-          if (!res.ok) return { score: 50, label: "Caution" as const };
-          return (await res.json()) as { score: number; label: "Safe" | "Caution" | "Avoid" };
-        } catch {
-          return { score: 50, label: "Caution" as const };
-        }
-      })
-    );
+    const crimeScores = samples.map(([lng, lat]) => computeCrimeRisk(lat, lng));
 
     const avgScore =
       crimeScores.reduce((sum, s) => sum + s.score, 0) / crimeScores.length;
