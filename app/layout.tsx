@@ -6,6 +6,8 @@ import { AppShell } from "@/components/app-shell";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { InstallPrompt } from "@/components/install-prompt";
 import { CookieConsent } from "@/components/cookie-consent";
+import { ToastProvider } from "@/components/toast-provider";
+import { PageTransition } from "@/components/page-transition";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,8 +25,8 @@ export const metadata: Metadata = {
     "Find EV chargers, plan routes, and track your carbon savings. Hyperlocal, fast, and beautiful.",
   manifest: "/manifest.json",
   icons: {
-    icon: "/icon-192x192.svg",
-    apple: "/icon-192x192.svg",
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
   },
 };
 
@@ -58,7 +60,11 @@ export default function RootLayout({
           </div>
         </noscript>
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <ToastProvider>
+            <AppShell>
+              <PageTransition>{children}</PageTransition>
+            </AppShell>
+          </ToastProvider>
         </AuthProvider>
         <ServiceWorkerRegister />
         <InstallPrompt />

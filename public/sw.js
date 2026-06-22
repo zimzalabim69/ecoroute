@@ -1,24 +1,35 @@
-const CACHE_NAME = 'ecoroute-v1';
+const CACHE_VERSION = 'ecoroute-v2';
 const STATIC_ASSETS = [
   '/',
   '/map',
   '/offline.html',
   '/manifest.json',
-  '/icon-192x192.svg',
-  '/icon-512x512.svg',
+  '/icon-192x192.png',
+  '/icon-512x512.png',
+  '/apple-touch-icon.png',
+  '/favicon.ico',
+  '/logo-navbar.png',
 ];
 
-const MAP_TILE_CACHE = 'ecoroute-map-tiles-v1';
-const OCM_CACHE = 'ecoroute-ocm-v2';
+const MAP_TILE_CACHE = 'ecoroute-map-tiles-v2';
+const OCM_CACHE = 'ecoroute-ocm-v3';
 
 const OCM_MAX_ENTRIES = 100;
-const OCM_TTL_MS = 60 * 60 * 1000; // 1 hour
+const OCM_TTL_MS = 60 * 60 * 1000;
+
+// Listen for SKIP_WAITING message from the page
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_VERSION).then(async (cache) => {
+      await cache.addAll(STATIC_ASSETS);
+    }).then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -26,12 +37,11 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((k) => k !== CACHE_NAME && k !== MAP_TILE_CACHE && k !== OCM_CACHE)
+          .filter((k) => !k.startsWith('ecoroute-map-tiles') && !k.startsWith('ecoroute-ocm'))
           .map((k) => caches.delete(k))
       )
-    )
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 async function evictLRU(cache) {
@@ -78,18 +88,12 @@ async function fetchOCM(request) {
       return cached;
     }
 
-    // Stale-while-revalidate: return cached, update in background
-    const fetchPromise = fetch(request)
+    fetch(request)
       .then((response) => {
         if (response.ok) cacheOCM(request, response.clone());
-        return response;
       })
-      .catch(() => cached);
+      .catch(() => {});
 
-    // For expired entries, we can return stale immediately and let the
-    // next refresh pick up the new data. This matches stale-while-revalidate.
-    // To keep things simple, we fire the revalidate in the background.
-    event?.waitUntil?.(fetchPromise);
     return cached;
   }
 
@@ -111,37 +115,74 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  if (url.hostname === 'tile.openstreetmap.org') {
+  // Skip non-GET requests
+  if (request.method !== 'GET') return;
+
+  // Tile caching
+  if (url.hostname === 'tile.openstreetmap.org' || url.hostname.includes('basemaps.cartocdn.com')) {
     event.respondWith(
       caches.open(MAP_TILE_CACHE).then(async (cache) => {
-        const cached = await cache.match(request);
-        if (cached) return cached;
-        const response = await fetch(request);
-        if (response.ok) cache.put(request, response.clone());
-        return response;
+        try {
+          const cached = await cache.match(request);
+          if (cached) return cached;
+          const response = await fetch(request);
+          if (response.ok) await cache.put(request, response.clone());
+          return response;
+        } catch {
+          return new Response(null, { status: 204 });
+        }
       })
     );
     return;
   }
 
+  // OCM API caching
   if (url.pathname === '/api/ocm') {
     event.respondWith(fetchOCM(request));
     return;
   }
 
+  // Offline fallback for /map
   if (url.pathname === '/map') {
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          if (response.ok) return response;
-          throw new Error('Network response was not ok');
-        })
         .catch(() => caches.match('/offline.html'))
+        .then((response) => response || caches.match('/offline.html'))
+        .catch(() => new Response('Offline', { status: 503 }))
     );
     return;
   }
 
+  // Network-first for everything else — only cache static assets we know about
   event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request))
+    (async () => {
+      try {
+        const networkResponse = await fetch(request);
+        if (networkResponse.ok || networkResponse.status === 304) {
+          const isStaticAsset = STATIC_ASSETS.some(
+            (asset) => url.pathname === asset || url.pathname.startsWith(asset + '?')
+          );
+          if (isStaticAsset) {
+            const cache = await caches.open(CACHE_VERSION);
+            await cache.put(request, networkResponse.clone());
+          }
+          return networkResponse;
+        }
+        throw new Error('Network error');
+      } catch {
+        const isStaticAsset = STATIC_ASSETS.some(
+          (asset) => url.pathname === asset || url.pathname.startsWith(asset + '?')
+        );
+        if (isStaticAsset) {
+          const cached = await caches.match(request);
+          if (cached) return cached;
+        }
+        // Don't break on failed JS/CSS — just return 404
+        if (request.destination === 'script' || request.destination === 'style') {
+          return new Response('', { status: 404, headers: { 'Content-Type': 'text/plain' } });
+        }
+        return new Response('Offline', { status: 503 });
+      }
+    })()
   );
 });

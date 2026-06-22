@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-05-27.dahlia",
-});
+const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
+const isPlaceholder = !STRIPE_SECRET ||
+  STRIPE_SECRET.toLowerCase().includes("your") ||
+  STRIPE_SECRET.toLowerCase().includes("placeholder") ||
+  STRIPE_SECRET === "test";
+const stripe = STRIPE_SECRET && !isPlaceholder
+  ? new Stripe(STRIPE_SECRET, { apiVersion: "2026-05-27.dahlia" })
+  : null;
 
 export async function POST(req: NextRequest) {
+  if (!stripe) {
+    return NextResponse.json(
+      { error: "Stripe is not configured. Payments are disabled." },
+      { status: 503 }
+    );
+  }
+
   try {
     const { email, userId, returnUrl } = (await req.json()) as {
       email?: string;

@@ -74,12 +74,14 @@ export async function GET(req: NextRequest) {
   url.searchParams.set("camelcase", "true");
 
   const key = process.env.OCM_API_KEY;
-  if (!key) {
-    return NextResponse.json(
-      { error: "OCM_API_KEY not configured. Get a free key at https://openchargemap.org/site/develop#api" },
-      { status: 403 }
-    );
+  const isPlaceholder = !key || key.includes("your-") || key.includes("placeholder") || key === "test";
+
+  // DEMO MODE: return mock stations when no real API key is configured
+  if (isPlaceholder) {
+    const mockStations = generateMockStations(Number(lat), Number(lng), Number(distance));
+    return NextResponse.json(mockStations);
   }
+
   url.searchParams.set("key", key);
 
   try {
@@ -104,4 +106,52 @@ export async function GET(req: NextRequest) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+function generateMockStations(centerLat: number, centerLng: number, distanceKm: number) {
+  const stations = [];
+  const count = Math.min(12, Math.max(6, Math.floor(distanceKm * 1.5)));
+  const names = [
+    "Tesla Supercharger", "ChargePoint Station", "EVgo Fast Charge", "Electrify America",
+    "Volta Charging", "Blink Charging", "Shell Recharge", "Flo Charging",
+    "SemaConnect", "Greenlots Station", "Webasto Charging", "ClipperCreek",
+  ];
+  const types = ["J1772", "CCS", "CHAdeMO", "Tesla"];
+  const addresses = [
+    "123 Main St", "456 Oak Ave", "789 Pine Rd", "321 Elm Blvd",
+    "654 Maple Dr", "987 Cedar Ln", "147 Birch St", "258 Willow Ave",
+  ];
+
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2;
+    const radius = (distanceKm * 0.6 * Math.random()) / 111;
+    stations.push({
+      id: 1000 + i,
+      addressInfo: {
+        title: `${names[i % names.length]} #${i + 1}`,
+        addressLine1: addresses[i % addresses.length],
+        town: "Demo City",
+        stateOrProvince: "DC",
+        latitude: centerLat + Math.cos(angle) * radius,
+        longitude: centerLng + Math.sin(angle) * radius,
+      },
+      connections: [
+        {
+          connectionType: { title: types[i % types.length] },
+          powerKW: [22, 50, 150, 250][i % 4],
+          statusType: { title: "Operational" },
+        },
+        {
+          connectionType: { title: types[(i + 1) % types.length] },
+          powerKW: [22, 50, 150][i % 3],
+          statusType: { title: "Operational" },
+        },
+      ],
+      mediaItems: [],
+      usageCost: i % 3 === 0 ? "Free" : "$0.35/kWh",
+      numberOfPoints: Math.floor(Math.random() * 8) + 2,
+      userRating: { rating: 3.5 + Math.random() * 1.5 },
+    });
+  }
+  return stations;
 }

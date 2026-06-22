@@ -89,6 +89,73 @@ body {
   color: #4caf50 !important;
 }
 
+/* Glassmorphism utilities */
+.glass {
+  background: rgba(30, 30, 30, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Glow utilities */
+.glow-green {
+  box-shadow: 0 0 40px rgba(76, 175, 80, 0.15);
+}
+.glow-green-strong {
+  box-shadow: 0 0 60px rgba(76, 175, 80, 0.25);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #4CAF50, #81C784);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Animated gradient border */
+@keyframes gradient-border {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-gradient-border {
+  background: linear-gradient(90deg, #4CAF50, #81C784, #4CAF50);
+  background-size: 200% auto;
+  animation: gradient-border 3s ease infinite;
+}
+
+/* Float animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Pulse glow */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(76, 175, 80, 0.2); }
+  50% { box-shadow: 0 0 40px rgba(76, 175, 80, 0.4); }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #121212; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+
+/* Selection color */
+::selection {
+  background: rgba(76, 175, 80, 0.3);
+  color: #ededed;
+}
+
 /* prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -99,6 +166,11 @@ body {
     transition-duration: 0.01ms !important;
   }
   .skeleton-shimmer::after {
+    animation: none !important;
+  }
+  .animate-float,
+  .animate-pulse-glow,
+  .animate-gradient-border {
     animation: none !important;
   }
 }

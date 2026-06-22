@@ -17,6 +17,7 @@ import { fetchStations } from "@/lib/ocm";
 import { fetchCrimeScore, getRiskColor } from "@/lib/crime";
 import { useAuth } from "@/components/auth-provider";
 import { useSignIn } from "@/components/sign-in-context";
+import { useToast } from "@/components/toast-provider";
 import { createClient } from "@/lib/supabase/client";
 import { SearchBar } from "./search-bar";
 import { HeatmapLayer } from "./heatmap-layer";
@@ -99,6 +100,7 @@ export default function LeafletMap() {
   const [stations, setStations] = useState<EVStation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
   const [filters, setFilters] = useState({
     connector: "",
     minPower: 0,
@@ -131,6 +133,7 @@ export default function LeafletMap() {
 
   const { user } = useAuth();
   const { openSignIn } = useSignIn();
+  const { toast } = useToast();
   const supabase = createClient();
 
   // Geolocation on mount
@@ -152,6 +155,7 @@ export default function LeafletMap() {
         try {
           const data = await fetchStations(center[0], center[1], filters.distance);
           setStations(data);
+          setDemoMode(data.length > 0 && data[0].address?.includes("Demo City"));
         } catch (e: unknown) {
           setError(e instanceof Error ? e.message : "Failed to load stations");
         } finally {
@@ -229,43 +233,54 @@ export default function LeafletMap() {
 
   const handleCheckinSubmit = async (data: CheckinFormData) => {
     if (!user || !checkinStation) return;
-    await supabase.from("checkins").insert({
-      station_id: checkinStation.id,
-      user_id: user.id,
-      status: data.status,
-      rating: data.rating,
-      note: data.note,
-      photo_url: data.photoUrl,
-    });
+    try {
+      await supabase.from("checkins").insert({
+        station_id: checkinStation.id,
+        user_id: user.id,
+        status: data.status,
+        rating: data.rating,
+        note: data.note,
+        photo_url: data.photoUrl,
+      });
+      toast(`Checked in at ${checkinStation.name}`, "success");
+    } catch {
+      toast("Check-in failed", "error");
+    }
     setCheckinOpen(false);
   };
 
   const toggleFavorite = async (station: EVStation) => {
-    if (!user) return;
+    if (!user) { openSignIn(); return; }
     const isFav = favorites.has(station.id);
-    if (isFav) {
-      await fetch("/api/favorites", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stationId: station.id }),
-      });
-      setFavorites((prev) => {
-        const next = new Set(prev);
-        next.delete(station.id);
-        return next;
-      });
-    } else {
-      await fetch("/api/favorites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stationId: station.id,
-          stationName: station.name,
-          lat: station.lat,
-          lng: station.lng,
-        }),
-      });
-      setFavorites((prev) => new Set(prev).add(station.id));
+    try {
+      if (isFav) {
+        await fetch("/api/favorites", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stationId: station.id }),
+        });
+        setFavorites((prev) => {
+          const next = new Set(prev);
+          next.delete(station.id);
+          return next;
+        });
+        toast(`Removed ${station.name} from favorites`, "info");
+      } else {
+        await fetch("/api/favorites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            stationId: station.id,
+            stationName: station.name,
+            lat: station.lat,
+            lng: station.lng,
+          }),
+        });
+        setFavorites((prev) => new Set(prev).add(station.id));
+        toast(`Saved ${station.name} to favorites`, "success");
+      }
+    } catch {
+      toast("Failed to update favorites", "error");
     }
   };
 
@@ -287,6 +302,7 @@ export default function LeafletMap() {
       if (res.ok) {
         const data = (await res.json()) as SafeRouteResult;
         setRouteResult(data);
+        toast(`Route planned: ${(data.route.distanceM / 1000).toFixed(1)} km, Safety ${Math.round(data.safetyScore)}%`, "success");
         // Save trip to history
         if (user) {
           await fetch("/api/trips", {
@@ -307,9 +323,12 @@ export default function LeafletMap() {
         }
       } else {
         setError("Route planning failed. Try again.");
+        toast("Route planning failed. Try again.", "error");
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Route planning failed");
+      const msg = e instanceof Error ? e.message : "Route planning failed";
+      setError(msg);
+      toast(msg, "error");
     } finally {
       setRouteLoading(false);
     }
@@ -361,10 +380,14 @@ export default function LeafletMap() {
         }),
       });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
-      else alert(data.error || "Checkout failed.");
+      if (data.url) {
+        toast("Redirecting to checkout...", "info");
+        window.location.href = data.url;
+      } else {
+        toast(data.error || "Checkout failed", "error");
+      }
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Checkout failed");
+      toast(e instanceof Error ? e.message : "Checkout failed", "error");
     }
   };
 
@@ -378,64 +401,77 @@ export default function LeafletMap() {
         </div>
       )}
 
-      {/* Top bar */}
-      <div className="flex flex-col gap-2 border-b border-[#2a2a2a] bg-[#1e1e1e] p-3">
+      {/* Top bar — glassmorphism */}
+      <div className="flex flex-col gap-2 border-b border-[#2a2a2a]/60 bg-[#1e1e1e]/80 backdrop-blur-xl p-3 shadow-lg">
         <SearchBar onSelect={handleSearchSelect} className="max-w-md" />
 
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="rounded-lg bg-[#121212] px-2 py-1 text-xs text-[#ededed] border border-[#2a2a2a]"
-            value={filters.connector}
-            onChange={(e) => setFilters((f) => ({ ...f, connector: e.target.value }))}
+          <div className="flex items-center gap-1.5 rounded-xl border border-[#2a2a2a] bg-[#121212]/60 px-2 py-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#4CAF50]"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            <select
+              className="bg-transparent text-xs text-[#ededed] outline-none cursor-pointer"
+              value={filters.connector}
+              onChange={(e) => setFilters((f) => ({ ...f, connector: e.target.value }))}
+            >
+              <option value="" className="bg-[#121212]">All Types</option>
+              <option value="J1772" className="bg-[#121212]">J1772</option>
+              <option value="CCS" className="bg-[#121212]">CCS</option>
+              <option value="CHAdeMO" className="bg-[#121212]">CHAdeMO</option>
+              <option value="Tesla" className="bg-[#121212]">Tesla</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5 rounded-xl border border-[#2a2a2a] bg-[#121212]/60 px-2 py-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#81C784]"><path d="M12 2v20M2 12h20"/></svg>
+            <select
+              className="bg-transparent text-xs text-[#ededed] outline-none cursor-pointer"
+              value={filters.minPower}
+              onChange={(e) => setFilters((f) => ({ ...f, minPower: Number(e.target.value) }))}
+            >
+              <option value={0} className="bg-[#121212]">Any Power</option>
+              <option value={50} className="bg-[#121212]">≥ 50 kW</option>
+              <option value={100} className="bg-[#121212]">≥ 100 kW</option>
+              <option value={150} className="bg-[#121212]">≥ 150 kW</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5 rounded-xl border border-[#2a2a2a] bg-[#121212]/60 px-2 py-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#A5D6A7]"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/></svg>
+            <select
+              className="bg-transparent text-xs text-[#ededed] outline-none cursor-pointer"
+              value={filters.distance}
+              onChange={(e) => setFilters((f) => ({ ...f, distance: Number(e.target.value) }))}
+            >
+              <option value={5} className="bg-[#121212]">5 km</option>
+              <option value={10} className="bg-[#121212]">10 km</option>
+              <option value={25} className="bg-[#121212]">25 km</option>
+              <option value={50} className="bg-[#121212]">50 km</option>
+            </select>
+          </div>
+
+          <button
+            onClick={() => setFilters((f) => ({ ...f, freeOnly: !f.freeOnly }))}
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition ${
+              filters.freeOnly
+                ? "border-[#4CAF50] bg-[#4CAF50]/10 text-[#4CAF50]"
+                : "border-[#2a2a2a] bg-[#121212]/60 text-[#a0a0a0] hover:text-[#ededed]"
+            }`}
           >
-            <option value="">All Connectors</option>
-            <option value="J1772">J1772</option>
-            <option value="CCS">CCS</option>
-            <option value="CHAdeMO">CHAdeMO</option>
-            <option value="Tesla">Tesla</option>
-          </select>
-          <select
-            className="rounded-lg bg-[#121212] px-2 py-1 text-xs text-[#ededed] border border-[#2a2a2a]"
-            value={filters.minPower}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, minPower: Number(e.target.value) }))
-            }
-          >
-            <option value={0}>Any Speed</option>
-            <option value={50}>{`>= 50 kW`}</option>
-            <option value={100}>{`>= 100 kW`}</option>
-            <option value={150}>{`>= 150 kW`}</option>
-          </select>
-          <label className="flex items-center gap-1 text-xs text-[#a0a0a0]">
-            <input
-              type="checkbox"
-              checked={filters.freeOnly}
-              onChange={(e) => setFilters((f) => ({ ...f, freeOnly: e.target.checked }))}
-            />
-            Free only
-          </label>
-          <select
-            className="rounded-lg bg-[#121212] px-2 py-1 text-xs text-[#ededed] border border-[#2a2a2a]"
-            value={filters.distance}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, distance: Number(e.target.value) }))
-            }
-          >
-            <option value={5}>5 km</option>
-            <option value={10}>10 km</option>
-            <option value={25}>25 km</option>
-            <option value={50}>50 km</option>
-          </select>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M2 12h20"/></svg>
+            Free Only
+          </button>
+
           <button
             onClick={() => setShowSafetyOverlay((v) => !v)}
-            className={`rounded-lg px-2 py-1 text-xs border transition ${
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition ${
               showSafetyOverlay
-                ? "border-[#F44336] text-[#F44336]"
-                : "border-[#2a2a2a] text-[#a0a0a0] hover:text-[#ededed]"
+                ? "border-[#F44336] bg-[#F44336]/10 text-[#F44336]"
+                : "border-[#2a2a2a] bg-[#121212]/60 text-[#a0a0a0] hover:text-[#ededed]"
             }`}
             title="Toggle safety risk overlay"
           >
-            {showSafetyOverlay ? "☠ Hide Risk" : "☠ Show Risk"}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            {showSafetyOverlay ? "Risk On" : "Risk Off"}
           </button>
 
           {/* Route planner */}
@@ -444,41 +480,52 @@ export default function LeafletMap() {
               onClick={() => {
                 if (center) setRouteFrom({ lat: center[0], lng: center[1], name: "Current Location" });
               }}
-              className={`rounded-lg px-2 py-1 text-xs border ${routeFrom ? "border-[#4CAF50] text-[#4CAF50]" : "border-[#2a2a2a] text-[#ededed]"}`}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition ${
+                routeFrom ? "border-[#4CAF50] bg-[#4CAF50]/10 text-[#4CAF50]" : "border-[#2a2a2a] bg-[#121212]/60 text-[#ededed] hover:border-[#4CAF50]/40"
+              }`}
             >
-              {routeFrom ? "From Set" : "Set From"}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+              {routeFrom ? "From" : "Set From"}
             </button>
             <button
               onClick={() => {
                 if (center) setRouteTo({ lat: center[0], lng: center[1], name: "Current Location" });
               }}
-              className={`rounded-lg px-2 py-1 text-xs border ${routeTo ? "border-[#FFD600] text-[#FFD600]" : "border-[#2a2a2a] text-[#ededed]"}`}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition ${
+                routeTo ? "border-[#FFD600] bg-[#FFD600]/10 text-[#FFD600]" : "border-[#2a2a2a] bg-[#121212]/60 text-[#ededed] hover:border-[#FFD600]/40"
+              }`}
             >
-              {routeTo ? "To Set" : "Set To"}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+              {routeTo ? "To" : "Set To"}
             </button>
             <button
               onClick={planRoute}
               disabled={!routeFrom || !routeTo || routeLoading}
-              className="rounded-lg bg-[#4CAF50] px-3 py-1 text-xs font-bold text-[#121212] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#4CAF50] to-[#388E3C] px-4 py-1.5 text-xs font-bold text-[#121212] shadow-[0_0_20px_rgba(76,175,80,0.2)] transition hover:shadow-[0_0_30px_rgba(76,175,80,0.35)] disabled:opacity-50 disabled:shadow-none"
             >
               {routeLoading ? (
-                <span className="flex items-center gap-1">
+                <>
                   <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
                   Planning...
-                </span>
+                </>
               ) : (
-                "Plan Route"
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M12 3v18"/></svg>
+                  Plan Route
+                </>
               )}
             </button>
-            <button
-              onClick={clearRoute}
-              className="rounded-lg bg-[#2a2a2a] px-2 py-1 text-xs text-[#ededed]"
-            >
-              Clear
-            </button>
+            {(routeFrom || routeTo) && (
+              <button
+                onClick={clearRoute}
+                className="inline-flex items-center rounded-xl border border-[#2a2a2a] bg-[#121212]/60 px-2.5 py-1.5 text-xs text-[#a0a0a0] transition hover:text-[#ededed]"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -598,6 +645,13 @@ export default function LeafletMap() {
             <Skeleton variant="card" className="w-64 h-24" />
             <Skeleton variant="card" className="w-64 h-24" />
             <p className="text-sm text-[#ededed]">Loading chargers...</p>
+          </div>
+        )}
+
+        {/* Demo mode badge */}
+        {demoMode && !error && (
+          <div className="absolute bottom-4 left-1/2 z-[1000] w-auto -translate-x-1/2 rounded-full border border-[#FFD600]/30 bg-[#FFD600]/10 px-4 py-1.5 text-xs font-medium text-[#FFD600] backdrop-blur-md">
+            Demo Mode — Using sample charger data
           </div>
         )}
 

@@ -98,7 +98,7 @@ export function SearchBar({ onSelect, className }: SearchBarProps) {
 
   return (
     <div ref={containerRef} className={`relative w-full ${className ?? ""}`}>
-      <div className="flex items-center gap-2 rounded-xl border border-[#2a2a2a] bg-[#1E1E1E] px-3 py-2 shadow-lg transition focus-within:border-[#4CAF50]">
+      <div className="flex items-center gap-2 rounded-xl border border-[#2a2a2a] bg-[#1E1E1E] px-3 py-2 shadow-lg transition focus-within:border-[#4CAF50] focus-within:shadow-[0_0_20px_rgba(76,175,80,0.15)]">
         <svg
           className="shrink-0 text-[#737373]"
           width={20}

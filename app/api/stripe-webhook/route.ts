@@ -2,26 +2,39 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-05-27.dahlia",
-});
+const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
+const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function isPlaceholder(val: string | undefined): boolean {
+  if (!val) return true;
+  const lower = val.toLowerCase();
+  return lower.includes("your") || lower.includes("placeholder") || lower === "test";
+}
 
 export async function POST(req: NextRequest) {
+  if (
+    isPlaceholder(STRIPE_SECRET) ||
+    isPlaceholder(WEBHOOK_SECRET) ||
+    isPlaceholder(SUPABASE_URL) ||
+    isPlaceholder(SUPABASE_SERVICE_KEY)
+  ) {
+    return NextResponse.json(
+      { error: "Stripe or Supabase is not fully configured. Webhooks are disabled." },
+      { status: 503 }
+    );
+  }
+
+  const stripe = new Stripe(STRIPE_SECRET!, { apiVersion: "2026-05-27.dahlia" });
+  const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_KEY!);
+
   const signature = req.headers.get("stripe-signature");
   const body = await req.text();
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(
-      body,
-      signature!,
-      process.env.STRIPE_WEBHOOK_SECRET!
-    );
+    event = stripe.webhooks.constructEvent(body, signature!, WEBHOOK_SECRET!);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(

@@ -147,11 +147,11 @@ export function BottomSheet({
       {/* Sheet */}
       <div
         ref={sheetRef}
-        className="absolute bottom-0 left-0 right-0 rounded-t-2xl border-t border-x border-[#2a2a2a] bg-[#1E1E1E] shadow-[0_-4px_24px_rgba(0,0,0,0.6)] will-change-transform"
+        className="absolute bottom-0 left-0 right-0 rounded-t-2xl border-t border-x border-[#2a2a2a]/60 bg-gradient-to-b from-[#1e1e1e] to-[#181818] backdrop-blur-xl will-change-transform"
         style={{
           transform: `translateY(${currentTranslate}px)`,
-          transition: isDragging ? "none" : "transform 300ms ease-out",
-          boxShadow: "0 0 20px rgba(76,175,80,0.08), 0 -4px 24px rgba(0,0,0,0.6)",
+          transition: isDragging ? "none" : "transform 300ms cubic-bezier(0.16, 1, 0.3, 1)",
+          boxShadow: "0 0 30px rgba(76,175,80,0.06), 0 -8px 40px rgba(0,0,0,0.5)",
         }}
         role="dialog"
         aria-modal="true"
@@ -166,7 +166,7 @@ export function BottomSheet({
           onPointerCancel={handlePointerUp}
           aria-label="Drag to resize sheet"
         >
-          <div className="h-1.5 w-10 rounded-full bg-[#737373]/60" />
+          <div className="h-1.5 w-10 rounded-full bg-[#737373]/40" />
         </div>
 
         {/* Header */}
