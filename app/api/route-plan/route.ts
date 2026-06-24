@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { planRoute } from "@/lib/ors";
+import { handleApiError, validateRequired } from "@/lib/api-utils";
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,6 +15,14 @@ export async function POST(req: NextRequest) {
     const toLat = body.to?.lat;
     const toLng = body.to?.lng;
 
+    const missing = validateRequired({ from: body.from, to: body.to });
+    if (missing) {
+      return NextResponse.json(
+        { error: "Missing required fields: from and to with numeric lat/lng" },
+        { status: 400 }
+      );
+    }
+
     if (
       typeof fromLat !== "number" ||
       typeof fromLng !== "number" ||
@@ -21,7 +30,7 @@ export async function POST(req: NextRequest) {
       typeof toLng !== "number"
     ) {
       return NextResponse.json(
-        { error: "Missing required fields: from and to with numeric lat/lng" },
+        { error: "All lat/lng values must be numbers" },
         { status: 400 }
       );
     }
@@ -52,7 +61,6 @@ export async function POST(req: NextRequest) {
     clearTimeout(timeoutId);
     return NextResponse.json(result);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleApiError(err);
   }
 }

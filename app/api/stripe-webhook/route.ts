@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { handleApiError, validateRequired } from "@/lib/api-utils";
 
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -37,9 +38,9 @@ export async function POST(req: NextRequest) {
     event = stripe.webhooks.constructEvent(body, signature!, WEBHOOK_SECRET!);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json(
-      { error: `Webhook signature verification failed: ${message}` },
-      { status: 400 }
+    return handleApiError(
+      new Error(`Webhook signature verification failed: ${message}`),
+      400
     );
   }
 
@@ -49,10 +50,11 @@ export async function POST(req: NextRequest) {
     const customerId = session.customer as string;
     const paymentIntentId = session.payment_intent as string;
 
-    if (!userId) {
-      console.error("Stripe webhook: missing userId in session metadata");
+    const missing = validateRequired({ userId });
+    if (missing) {
+      console.error(`Stripe webhook: missing ${missing} in session metadata`);
       return NextResponse.json(
-        { error: "Missing userId in metadata" },
+        { error: `Missing ${missing} in metadata` },
         { status: 400 }
       );
     }

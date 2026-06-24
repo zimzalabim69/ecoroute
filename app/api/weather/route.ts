@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { WeatherAlert } from "@/types";
+import { handleApiError, validateRequired } from "@/lib/api-utils";
+import { TTLCache } from "@/lib/cache";
 
-interface CacheEntry {
-  data: WeatherAlert[];
-  expires: number;
-}
-
-const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const cache = new TTLCache<WeatherAlert[]>(CACHE_TTL_MS);
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,18 +12,18 @@ export async function GET(req: NextRequest) {
     const lat = searchParams.get("lat");
     const lng = searchParams.get("lng");
 
-    if (!lat || !lng) {
+    const missing = validateRequired({ lat, lng });
+    if (missing) {
       return NextResponse.json(
-        { error: "lat and lng are required" },
+        { error: `${missing} is required` },
         { status: 400 }
       );
     }
 
     const cacheKey = `${lat},${lng}`;
-    const now = Date.now();
     const cached = cache.get(cacheKey);
-    if (cached && cached.expires > now) {
-      return NextResponse.json(cached.data);
+    if (cached) {
+      return NextResponse.json(cached);
     }
 
     const res = await fetch(
@@ -67,11 +64,10 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    cache.set(cacheKey, { data: alerts, expires: now + CACHE_TTL_MS });
+    cache.set(cacheKey, alerts);
     return NextResponse.json(alerts);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return handleApiError(err);
   }
 }
 
